@@ -1,0 +1,40 @@
+# pidp8i-trixie.yaml
+# PiDP-8/I image — Raspberry Pi OS Trixie (arm64)
+#
+# Supports: 64-bit Pi 2 class machines and up.
+# Default device: rpi-generic64 (works on all supported arm64 Pi hardware)
+#
+# Override device at build time for hardware-specific kernel optimisations:
+#
+#   Generic (default — works on all supported arm64 Pi hardware):
+#     sudo rpi-image-gen build -S ~/pidp8i/os-image -c pidp8i-trixie.yaml
+#
+#   Machine-specific targets:
+#     sudo rpi-image-gen build -S … -- IGconf_device_layer={rpi5, …}
+#
+# Keep passwords out of source control — pass at build time instead:
+#   sudo rpi-image-gen build -S … -- IGconf_device_userpass='your-secure-password'
+
+include:
+  file: trixie-minbase.yaml      # built-in base: resolves from rpi-image-gen/config/
+
+device:
+  layer: rpi-generic64-device           # overrides rpi5 default from trixie-minbase.yaml
+  hostname: pidp8i
+  user1: pidp8i
+  user1pass: edsonDeCastro1968!
+
+ssh:
+  enabled: y
+  pubkey_only: n
+
+image:
+  compression: zstd
+  name: pidp8i-trixie            # overrides deb13-arm64-min from trixie-minbase.yaml
+  root_part_size: 400%           # overrides 300% — headroom for fossil repo + build artifacts
+
+deploy:  
+  compression: zstd
+  
+layer:
+  app: pidp8i-common             # adds our layer on top of trixie-minbase

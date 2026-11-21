@@ -1,0 +1,175 @@
+# METABEGIN
+# X-Env-Layer-Name: pidp8i-common
+# X-Env-Layer-Desc: PiDP-8/I software stack for all supported targets
+# X-Env-Layer-Version: 1.8.0
+# X-Env-Layer-Requires: rpi-user-credentials, rpi-essential-base, openssh-server
+# METAEND
+---
+# Migrated from bosi do_init, do_build, and do_prepare verbs.
+#
+# NLS variant retired: the Pi Zero 2 W (rpizero2w) is the lowest supported
+# target and its quad-core Cortex-A53 is fast enough to build the OS/8 RK05
+# disk images from source without the NLS pre-built image workaround.
+#
+# Key differences from the original bosi workflow:
+#   - User creation is handled declaratively via rpi-user-credentials
+#     (no more usermod/groupmod dance)
+#   - SSH enable and password expiry are config-level concerns, not hooks
+#   - The fossil clone + build runs inside the image chroot at build time
+#     on the Pi 5 host. The finished .img has everything pre-installed.
+#     There is no multi-step boot-and-run sequence.
+
+mmdebstrap:
+  packages:
+    # ── Mirrors bosi do_init apt-get installs ──────────────────────────
+    - fossil
+    - python3-pip
+    - python3-pexpect
+    - python3-pkg-resources
+    - python3-yaml
+    - libncurses-dev
+    # Build toolchain (required for tools/mmake)
+    - build-essential
+    - make
+    # systemd user session support (required for pidp8i user service)
+    - libpam-systemd
+    # Network tools
+    - iproute2
+    - wpasupplicant
+    - wireless-regdb
+    - wireless-tools
+    - dnsutils
+    - iw
+    - curl
+    - traceroute
+    - mtr
+    # additional POSIXy things we want that aren't in the base image
+    - file
+    - less
+    - man-db
+    - manpages
+    - vim
+
+  customize-hooks:
+    # ── Mirrors bosi do_build ──────────────────────────────────────────
+    # Phase 1: Create home directory and ensure user exists.
+    # Runs as root because rpi-user-credentials customize-hooks may not
+    # have run yet. The pidp8i configure script refuses to run as root,
+    # so we create the user here if needed, fix ownership, then su to
+    # pidp8i for the actual build in phase 2.
+    - |
+      chroot "$1" bash -c '
+        set -e
+        mkdir -p /home/pidp8i/museum /home/pidp8i/pidp8i
+        id -u pidp8i >/dev/null 2>&1 || adduser --disabled-password --gecos "" pidp8i
+        chown -R pidp8i:pidp8i /home/pidp8i
+      '
+
+    # Phase 2: Clone fossil repo, build, and install as pidp8i user.
+    - |
+      chroot "$1" su - pidp8i -c '
+        set -e
+        fossil clone -u https://tangentsoft.com/pidp8i museum/pidp8i.fossil
+        cd pidp8i
+        fossil open ~/museum/pidp8i.fossil @BRANCH@
+        fossil set autosync pullonly
+        ./configure
+        tools/mmake
+      '
+
+    # Phase 3: Install built artifacts system-wide (runs as root)
+    - chroot "$1" make -C /home/pidp8i/pidp8i install
+    - chroot "$1" su - pidp8i -c 'cd pidp8i ; fossil clean --force'
+
+    # ── GPIO permissions ───────────────────────────────────────────────
+    # Install udev rule so /dev/gpiomem is accessible to the gpio group.
+    # Required for the PiDP-8/I panel hardware (scanswitch/pdp8 binaries
+    # access /dev/gpiomem directly).
+    # The SUBSYSTEM value was determined empirically via:
+    #   udevadm info /dev/gpiomem  →  SUBSYSTEM=gpiomem
+    - |
+      printf 'SUBSYSTEM=="gpiomem", KERNEL=="gpiomem", GROUP="gpio", MODE="0660"\n' \
+        > "$1/etc/udev/rules.d/99-gpiomem.rules"
+
+    # ── pidp8i user service setup ──────────────────────────────────────
+    # The pidp8i simulator runs as a systemd user service under the
+    # pidp8i account. Linger ensures the user session starts at boot
+    # without requiring a login.
+    #
+    # loginctl enable-linger can't run in chroot (requires live systemd),
+    # so we create the linger file directly instead.
+    - mkdir -p "$1/var/lib/systemd/linger"
+    - touch "$1/var/lib/systemd/linger/pidp8i"
+
+    # 'pidp8i install' also can't run in chroot as it needs a live user
+    # session bus. Two first-boot one-shot services handle this:
+    #   - pidp8i-firstboot-user.service (user): runs 'pidp8i install', then
+    #     writes /run/pidp8i-firstboot-done to signal completion.
+    #   - pidp8i-firstboot-system.service (system): moves the wpa_supplicant
+    #     config from /boot/firmware if present, waits for the user service
+    #     sentinel, then reboots.
+    # Both self-disable after running.
+    - mkdir -p "$1/home/pidp8i/.config/systemd/user"
+    - cp "${SRCROOT}/files/pidp8i-firstboot-user.service" "$1/home/pidp8i/.config/systemd/user/pidp8i-firstboot-user.service"
+    - mkdir -p "$1/home/pidp8i/.config/systemd/user/default.target.wants"
+    - ln -sf /home/pidp8i/.config/systemd/user/pidp8i-firstboot-user.service "$1/home/pidp8i/.config/systemd/user/default.target.wants/pidp8i-firstboot-user.service"
+    - chroot "$1" chown -R pidp8i:pidp8i /home/pidp8i/.config
+    - cp "${SRCROOT}/files/pidp8i-firstboot-system.service" "$1/etc/systemd/system/pidp8i-firstboot-system.service"
+    - mkdir -p "$1/etc/systemd/system/multi-user.target.wants"
+    - ln -sf /etc/systemd/system/pidp8i-firstboot-system.service "$1/etc/systemd/system/multi-user.target.wants/pidp8i-firstboot-system.service"
+
+    # ── WiFi configuration ─────────────────────────────────────────────
+    # Add wlan0 networkd config so the interface gets DHCP when
+    # wpa_supplicant brings it up.
+    - $LAYER_HOOKS/systemd/netgen wlan0 > "$1/etc/systemd/network/02-wlan0.network"
+    # Enable the interface-specific wpa_supplicant instance which reads
+    # /etc/wpa_supplicant/wpa_supplicant-wlan0.conf
+    - chroot "$1" systemctl enable wpa_supplicant@wlan0.service
+    # Copy the wpa_supplicant template to the boot partition so users can
+    # fill in their SSID and password before first boot. The firstboot
+    # service will move it into /etc/wpa_supplicant/ on first boot.
+    - mkdir -p "$1/boot/firmware"
+    - cp "${SRCROOT}/files/wpa_supplicant-wlan0.conf" "$1/boot/firmware/wpa_supplicant-wlan0.conf"
+
+    # ── Cleanup ────────────────────────────────────────────────────────
+    # Remove bash history accumulated during the build above
+    - rm -f "$1/home/pidp8i/.bash_history"
+    - rm -f "$1/root/.bash_history"
+    # Add /opt/pidp8i/bin and man to pidp8i's PATH and MANPATH.
+    # Makefile does this via $SUDO_USER which is unset in chroot,
+    # so we do it directly instead.
+    - |
+      grep -qF '/opt/pidp8i/bin' "$1/home/pidp8i/.profile" || \
+        echo 'export PATH=$PATH:/opt/pidp8i/bin' >> "$1/home/pidp8i/.profile"
+    - |
+      grep -qF '/opt/pidp8i/share/man' "$1/home/pidp8i/.profile" || \
+        echo 'export MANPATH=$MANPATH:/opt/pidp8i/share/man' >> "$1/home/pidp8i/.profile"
+
+    # ── SSH configuration ──────────────────────────────────────────────
+    # SSH is disabled by default. The user enables it by placing an
+    # enable_ssh marker file on the boot partition (/boot/firmware).
+    # pidp8i-ssh-setup.service syncs /etc/ssh/enabled with that marker
+    # on every boot; ssh-condition.conf makes ssh.service conditional on
+    # /etc/ssh/enabled being present.
+    - mkdir -p "$1/etc/systemd/system/ssh.service.d"
+    - printf '[Unit]\nConditionPathExists=/etc/ssh/enabled\n' > "$1/etc/systemd/system/ssh.service.d/condition.conf"
+    - rm -f "$1/etc/ssh/enabled"
+    - cp "${SRCROOT}/files/pidp8i-ssh-setup.service" "$1/etc/systemd/system/pidp8i-ssh-setup.service"
+    - ln -sf /etc/systemd/system/pidp8i-ssh-setup.service "$1/etc/systemd/system/multi-user.target.wants/pidp8i-ssh-setup.service"
+    # Prevent idle SSH connections from timing out. The legacy bosi image
+    # did not have this problem; this restores equivalent behavior.
+    - |
+      printf 'ClientAliveInterval 60\nClientAliveCountMax 10\n' \
+        >> "$1/etc/ssh/sshd_config"
+
+    # ── First-login password change ────────────────────────────────────
+    # We cannot use 'passwd -e' here. Although it forces a password
+    # change on first interactive login, PAM also blocks the
+    # linger-triggered systemd user session at boot, preventing the
+    # pidp8i simulator from autostarting. Instead we use a sentinel
+    # file checked by .bashrc, which only fires for interactive shells
+    # and is invisible to systemd.
+    - touch "$1/home/pidp8i/.password-not-changed"
+    - chroot "$1" chown pidp8i:pidp8i /home/pidp8i/.password-not-changed
+    - cat "${SRCROOT}/files/bashrc-password-check.sh" >> "$1/home/pidp8i/.bashrc"
+    - chroot "$1" chown pidp8i:pidp8i /home/pidp8i/.bashrc

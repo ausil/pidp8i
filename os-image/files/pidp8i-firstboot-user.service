@@ -1,0 +1,12 @@
+[Unit]
+Description=PiDP-8/I first boot user installation
+After=default.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/pidp8i/bin/pidp8i install
+ExecStartPost=/bin/systemctl --user disable pidp8i-firstboot-user.service
+ExecStartPost=/bin/touch /tmp/pidp8i-firstboot-done
+
+[Install]
+WantedBy=default.target

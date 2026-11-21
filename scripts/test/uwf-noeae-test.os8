@@ -1,0 +1,14 @@
+# Script to build and run test harness NON-EAE U/W FOCAL library
+
+mount rk0 $os8mo/v3d.rk05 required
+boot rk0
+
+cpto $src/src/uwfocal/8NFIO.PA DSK:
+
+pal8 8NFIO.BN,8NFIO.LS<8NFIO.PA
+
+os8 MAP 8NFIO.MP<8NFIO.BN
+
+cpfrom DSK:8NFIO.LS $src/src/uwfocal/8NFIO.LS /A
+
+cpfrom DSK:8NFIO.MP $src/src/uwfocal/8NFIO.MP /A

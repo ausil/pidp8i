@@ -1,0 +1,15 @@
+# METABEGIN
+# X-Env-Layer-Name: rpi-generic64-device
+# X-Env-Layer-Desc: Generic arm64 device layer for Pi 3/4/5 and Zero 2 W.
+#  Thin wrapper around rpi-generic64 that satisfies the 'device' provider
+#  requirement. Following rpi-image-gen's recommended pattern of defining
+#  a project-specific superset device layer — see
+#  https://github.com/raspberrypi/rpi-image-gen/issues/202
+# X-Env-Layer-Version: 1.0.0
+# X-Env-Layer-Requires: rpi-generic64
+# X-Env-Layer-Provides: device
+# METAEND
+---
+# No packages or hooks needed — rpi-generic64 handles everything.
+# This layer exists to declare the 'device' capability per the recommended
+# rpi-image-gen pattern of defining a superset device layer for your project.

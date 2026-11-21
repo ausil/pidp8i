@@ -1,0 +1,14 @@
+[Unit]
+Description=Configure SSH access from boot partition marker
+After=local-fs.target
+Before=ssh.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Sync /etc/ssh/enabled with the presence of /boot/firmware/enable_ssh.
+# Removing the marker file and rebooting will disable SSH; adding it re-enables.
+ExecStart=/bin/sh -c 'if [ -f /boot/firmware/enable_ssh ]; then touch /etc/ssh/enabled; else rm -f /etc/ssh/enabled; fi'
+
+[Install]
+WantedBy=multi-user.target

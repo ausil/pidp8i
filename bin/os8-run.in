@@ -1,0 +1,243 @@
+#!/usr/bin/env @PYCMD@
+# -*- coding: utf-8 -*-
+########################################################################
+# Script runner for OS/8 under SIMH.
+# The library module os8script.py does the heavy lifting.
+#
+# See usage message below for details.
+#
+# Copyright © 2018-2025 by Bill Cattey and Warren Young
+#
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+#
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+# IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE FOR ANY CLAIM,
+# DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT
+# OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE
+# OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+#
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale,
+# use or other dealings in this Software without prior written
+# authorization from those authors.
+########################################################################
+
+# Bring in just the basics so we can bring in our local modules
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(__file__) + "/../lib")
+sys.path.insert(0, os.getcwd() + "/lib")
+
+# Remaining Python core modules
+import re
+
+# Our local modules
+from pidp8i import *
+from simh import *
+from os8script import *
+
+
+#### GLOBALS AND CONSTANTS #############################################
+
+debug_arg: bool = False
+verbose_arg: bool = False
+very_verbose_arg: bool = False
+quiet_arg: bool = False
+
+usage: str = (
+    "usage: "
+    + os.path.basename(__file__)
+    + " [-h] [-d] [-v] [-vv] [--enable enable_option] ... \n\t[--disable disable_option] ... "
+    + "\n \tscript [script] ... "
+)
+
+_en_dis_arg_re = re.compile(r"^(enable|disable)_(\S+)$")
+
+
+def opt_set(
+    en_dis: str, option: str, options_enabled: list[str], options_disabled: list[str]
+):
+    if option == "" or en_dis == "":
+        return
+    # print(en_dis + " " + option)
+    if en_dis == "enable":
+        if option not in options_enabled:
+            options_enabled.append(option)
+        if option in options_disabled:
+            options_disabled.remove(option)
+    elif en_dis == "disable":
+        if option not in options_disabled:
+            options_disabled.append(option)
+        if option in options_enabled:
+            options_enabled.remove(option)
+    else:
+        return
+
+
+#### parse_args ########################################################
+
+
+def parse_args(
+    script_files: list[str], options_enabled: list[str], options_disabled: list[str]
+):
+    global debug_arg
+    global verbose_arg
+    global very_verbose_arg
+    global usage
+
+    enable_usage: str = ""
+    disable_usage: str = ""
+
+    idx = 1
+    numargs = len(sys.argv)
+
+    if numargs < 2:
+        print(usage)
+        sys.exit(-1)
+
+    # Add arguments corresponding to --*-os8-* configure script options
+    max_obn_len = 0
+    for obn, vals in os8opts.opts.items():
+        max_obn_len = max(max_obn_len, len(obn))
+    for obn, vals in os8opts.opts.items():
+        if vals[0]:
+            # Enable option
+            pad_str = (max_obn_len - len(obn)) * " "
+            new_usage = "    " + obn + ": " + pad_str + vals[1] + "\n"
+            disable_usage += new_usage
+        else:
+            # Disable option
+            pad_str = (max_obn_len - len(obn)) * " "
+            new_usage = "    " + obn + ": " + pad_str + vals[1] + "\n"
+            enable_usage += new_usage
+
+    if enable_usage != "":
+        usage += "\n  Known enable options: \n"
+        usage += enable_usage
+
+    if disable_usage != "":
+        usage += "\n  Known disable options: \n"
+        usage += disable_usage
+
+    while idx < numargs:
+        arg = sys.argv[idx]
+        # print("idx: " + str(idx) + ", arg: " + arg)
+        # print("Files: " + str(script_files))
+        # print("Options: " + str(options_enabled))
+        if arg == "-d" or arg == "--debug":
+            debug_arg = True
+        elif arg == "-h" or arg == "--help":
+            print(usage)
+            sys.exit(0)
+        elif arg == "-v" or arg == "--verbose":
+            verbose_arg = True
+        elif arg == "-vv" or arg == "--very-verbose":
+            very_verbose_arg = True
+        elif arg == "--enable":
+            idx += 1
+            if idx == numargs:
+                print("expecting an option but got none.")
+            else:
+                option = sys.argv[idx]
+                # Only add the option once
+                if option not in options_enabled:
+                    options_enabled.append(option)
+        elif arg == "--disable":
+            idx += 1
+            if idx == numargs:
+                print("expecting an option but got none.")
+            else:
+                option = sys.argv[idx]
+                # Only add the option once
+                if option not in options_disabled:
+                    options_disabled.append(option)
+        else:
+            script_files.append(arg)
+        idx += 1
+
+
+#### main ##############################################################
+# Program entry point.  Parses the command line and drives the above.
+
+
+def main():
+    script_files: list[str] = []
+    options_enabled: list[str] = []
+    options_disabled: list[str] = []
+
+    parse_args(script_files, options_enabled, options_disabled)
+    if len(script_files) == 0:
+        print("Need a script file to run.")
+        sys.exit(-1)
+
+    if verbose_arg:
+        print("script_files: " + str(script_files))
+    if debug_arg:
+        print("options_enabled" + str(options_enabled))
+        print("options_disabled" + str(options_disabled))
+
+    # Append SIMH and OS/8 output to a file by default.
+    #
+    # We append because we're run twice in each test directory via the
+    # os8-sys Makefile target called by test-os8-run, once for the "dist"
+    # media and once for the actual RK05 bootable media.  So, the second
+    # run must append its logs to the first run's log file.
+    #
+    # Send the log info to the console instead of the progress messages if
+    # -v was given.  See https://stackoverflow.com/questions/21239338
+    s = Simh(dirs.build, True)
+    if verbose_arg:
+        s.verbose = True
+    s.set_logfile(
+        open(dirs.log + "os8-run" + ".log", "a")
+        if not very_verbose_arg
+        else os.fdopen(sys.stdout.fileno(), "w", 0)
+    )
+
+    os8 = OS8Script(
+        s, options_enabled, options_disabled, verbose=verbose_arg, debug=debug_arg
+    )
+
+    for script_file in script_files:
+        if verbose_arg:
+            print(
+                os.path.basename(__file__) + " -- Language Version: " + os8.lang_version
+            )
+
+        print("Running script file: " + script_file)
+        os8.run_script_file(script_file)
+
+    # After all scripts are done, we remove any scratch files,
+    # detach any mounted devices, and shut down simh gracefully.
+
+    for filename in os8.scratch_list:
+        if os8.verbose:
+            print("Deleting scratch_copy: " + filename)
+        os.remove(filename)
+
+    if s.os8_attached and (os8.verbose or os8.debug):
+        print("detach all will  now unmount the following devices:")
+        for device, image in s.os8_attached.items():
+            print(f"  {device} -> {image}")
+
+    s.simh_cmd("detach all")
+
+    s.child.sendline("quit")
+    if verbose_arg:
+        print("Done!")
+
+
+if __name__ == "__main__":
+    main()

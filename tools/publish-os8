@@ -1,0 +1,5 @@
+#!/bin/sh -e
+cd bin
+fossil uv add v3d-dist.rk05 v3d-patched.rk05 v3d.rk05 v3d-src.rk05
+fossil uv add ock-dist.rk05 ock-patched.rk05 ock.rk05
+fossil uv sync

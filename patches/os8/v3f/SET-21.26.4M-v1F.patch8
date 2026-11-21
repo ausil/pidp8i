@@ -1,0 +1,21 @@
+# SET VlE
+# Seq 21. 26. 4 M
+# 1 of 1
+# Fix to SET TTY NO SCOPE support.
+# Problem:   SET TTY NO SCOPE breaks expected behavior with rubouts
+# in the Keyboard Monitor such that it doesn't properly prefix
+# the string of deleted chars with a backslash.
+# Diagnosis:  In V3F the location of page zero literals shifted.
+# When restoring NO SCOPE the wrong location for ['\ is used.
+# Solution:  Install the following patch:
+.GET SYS:SET
+.ODT
+0507/6105 6106
+3254/1070 1101
+\c
+.SAVE SYS:SET
+# This patch upgrades SET to Version VIF.
+# NO SCOPE rubout processing will again prefix
+# the echoed string of characters with a backslash.
+# Note this is not an official DEC SPR, but 
+# OS/8 v3f isn't official either.

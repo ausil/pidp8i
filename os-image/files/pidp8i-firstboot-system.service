@@ -1,0 +1,19 @@
+[Unit]
+Description=PiDP-8/I first boot system tasks
+After=multi-user.target
+
+[Service]
+Type=oneshot
+# Move wpa_supplicant config from the boot partition if the user placed one
+# there before first boot, then restart wpa_supplicant so WiFi comes up
+# before the user firstboot service does its work.
+ExecStart=/bin/sh -c 'if [ -f /boot/firmware/wpa_supplicant-wlan0.conf ]; then mv /boot/firmware/wpa_supplicant-wlan0.conf /etc/wpa_supplicant/wpa_supplicant-wlan0.conf && chmod 600 /etc/wpa_supplicant/wpa_supplicant-wlan0.conf && systemctl restart wpa_supplicant@wlan0.service; fi'
+# Wait for the user firstboot service to signal completion, with a 10-minute
+# timeout.  Exit non-zero on timeout so the subsequent reboot step is skipped,
+# leaving the system up for debugging via SSH or console.
+ExecStartPost=/bin/sh -c 'i=0; until [ -f /tmp/pidp8i-firstboot-done ] || [ $i -ge 600 ]; do sleep 2; i=$((i+2)); done; [ -f /tmp/pidp8i-firstboot-done ]'
+ExecStartPost=/bin/systemctl disable pidp8i-firstboot-system.service
+ExecStartPost=/bin/systemctl reboot
+
+[Install]
+WantedBy=multi-user.target

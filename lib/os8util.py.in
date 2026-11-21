@@ -1,0 +1,272 @@
+#!/usr/bin/env @PYCMD@
+# -*- coding: utf-8 -*-
+########################################################################
+# Utilities for the various os8 binaries and tools.
+# Contains that used to be repeated in os8-cp and os8-cmp.
+#
+# Copyright © 2025 by Bill Cattey and Warren Young
+#
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+#
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+# IN NO EVENT SHALL THE AUTHORS LISTED ABOVE BE LIABLE FOR ANY CLAIM,
+# DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT
+# OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE
+# OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+#
+# Except as contained in this notice, the names of the authors above
+# shall not be used in advertising or otherwise to promote the sale,
+# use or other dealings in this Software without prior written
+# authorization from those authors.
+########################################################################
+
+# Bring in just the basics so we can bring in our local modules
+# import os
+import sys
+
+# import glob
+import re
+from typing import NoReturn, TypedDict
+import argparse
+import tempfile
+import shutil
+
+# Our local modules
+from pidp8i import *
+from simh import *
+
+
+#### GLOBALS AND CONSTANTS #############################################
+
+# Matches if the string begins with a dollar sign, and has at least
+# one slash, returning the string between the dollar sign and the
+# first slash in group 1 and the rest in group 2.
+# No whitespace in the string.
+_expandable_re = re.compile(r"^\$([^/\s]+)/(\S*)$")
+
+# OS/8 file name matching regex
+_os8_file_re = re.compile(r"(\S+):(\S+)?")
+
+# Default RK05 system image to attach if no sys specified.
+_default_sys_image = "v3d-patched.rk05"
+_default_sys_path = dirs.os8mo + _default_sys_image
+
+#### abort_prog ########################################################
+# Print err_string and exit with -1 return status.
+
+
+def abort_prog(err_str: str) -> NoReturn:
+    print("Abort: " + err_str)
+    sys.exit(-1)
+
+
+#### AttachSpec #######################################################
+#
+# Describes the SIMH attach command
+#
+# simh_name: the name of the device in SIMH
+# unit: the unit number of the device in SIMH
+# image: the path to the image file.
+
+
+class AttachSpec(TypedDict, total=True):
+    simh_name: str
+    unit: str
+    image: str
+    zero: bool
+
+
+def default_attach_spec() -> AttachSpec:
+    return {"simh_name": "rk", "unit": "0", "image": _default_sys_path, "zero": False}
+
+
+def empty_attach_spec() -> AttachSpec:
+    return {"simh_name": "", "unit": "", "image": "", "zero": False}
+
+
+def is_empty_attach_spec(spec: AttachSpec) -> bool:
+    return spec["simh_name"] == "" and spec["unit"] == "" and spec["image"] == ""
+
+
+#### ActionPlan ########################################################
+#
+# An ActionPlan describes the sequence of mounts and copies to perform
+# based on either an action file, or command line arguments.
+#
+# One initial action, "sys" that defines the system image to attach and boot.
+# Then "mount" lists any other device files to attach.
+# Finally the "copy" actions to perform amongst the mounted devices.
+#
+# Each element of the copy array names
+# a file format option, a source, a destination, and operation type.
+#
+#    [<option>, <source>, <destination>, <type>]
+#
+# option -- the transfer format comes from the OS/8 PIP options:
+# a, b, i, y, or z  (See also the _pip_option array above.)
+#
+# type is one of:
+#      "from" if we are transferring *from* OS/8 to POSIX
+#      "to"   if we are transferring *to* OS/8 to POSIX
+#      "on"   if we are transferring files within -- *on* OS/8
+#
+# The source and destination file specifications are interpreted as in
+# the USAGE message above.  (Look for "colon".)
+#
+# The file specifications for the copy operations can get pretty complicated
+# because we do globbing and variable substitutionon the POSIX paths,
+# and may do wild carding on the OS/8 filespecs.
+
+
+class ActionPlan(TypedDict, total=True):
+    sys: AttachSpec
+    mount: list[AttachSpec]
+    copy: list[list[str]]
+
+
+def empty_action_plan() -> ActionPlan:
+    return {"sys": empty_attach_spec(), "mount": [], "copy": []}
+
+
+def is_empty_action_plan(plan: ActionPlan) -> bool:
+    return (
+        is_empty_attach_spec(plan["sys"]) and plan["mount"] == [] and plan["copy"] == []
+    )
+
+
+#### has_os8_wildcards #################################################
+# Returns True if the passed file name has OS/8 style wildcards.
+
+
+def has_os8_wildcards(filename: str) -> bool:
+    os8_wild_cards = "*?"
+    for char in os8_wild_cards:
+        if char in filename:
+            return True
+    return False
+
+
+#### dest_expand ########################################################
+# Return a full path based either on the --destdir option or
+# the default _pkg_obj_dir
+
+
+def dest_expand(args: argparse.Namespace, fname: str, default: str) -> str:
+    if args.destdir:
+        return os.path.join(args.destdir, fname)
+    else:
+        return os.path.join(default, fname)
+
+
+#### is_directory ######################################################
+#
+# Returns True if the passed path looks like a directory.
+#
+# This is used at a level where we may still be unsure whether the given
+# path refers to something on the OS/8 or the host side, so we first
+# determine whether the path looks like an OS/8 or host-side path.  If
+# it looks like an OS/8 path, we consider it a "directory" if it names a
+# device name, lacking a file name part after it.  Otherwise, we use the
+# local OS's "is a directory" path check.
+
+
+def is_directory(path: str, debug: bool = False) -> bool:
+    if debug:
+        print("is_directory (" + path + ")")
+    m = re.match(_os8_file_re, path)
+    if m != None:
+        if debug:
+            print("OS/8 Match: DEV: " + m.group(1) + ", File: " + str(m.group(2)))
+        if m.group(2) == None or m.group(2) == "":
+            return True  # Just a device so yes it's a directory.
+        else:
+            return False
+    if has_os8_wildcards(path):
+        if debug:
+            print("Has wildcards.")
+        return False
+    return os.path.isdir(path)
+
+
+#### file_list_from_expect #############################################
+# Given a block of text output by the Python Expect module used by class
+# Simh, parse it with the assumption that it contains OS/8 DIR output.
+
+
+def file_list_from_expect(before: str) -> list[str]:
+    file_list: list[str] = []
+    lines = before.split("\r")
+    for line in lines[1:]:  # First line is our command. Skip it.
+        line = line.strip()
+        if line == "":
+            continue
+        m = re.match(r"(\S+)\s*\.(\S+)", line)
+        if m == None:
+            continue
+        # if debug_arg: print("file_list_from_expect: group 1: " + m.group(1) + ", group 2: " + m.group(2))
+        fname = m.group(1) + "." + m.group(2)
+        file_list.append(fname)
+    return file_list
+
+#### make_scratch ####################################################
+# Stand-alone version imported from os8script class. 
+# Create a copy of the contents of image file using the python
+# method to create a secure, named temp filename.
+# The caller has split the image file name into a base path,
+# and an extension which we use.
+# After copying the source image, the file is closed and the name
+# of the scratch file is returned.
+# If no scratch file is created return the empty string.
+
+def make_scratch(base_imagename: str, extension: str, debug:bool=False) -> str:
+    try:
+        src_image = open(base_imagename + extension, "rb")
+    except IOError:
+        print("Open of imagefile " + base_imagename + extension + " failed.")
+        return ""
+
+    dir_path = os.path.dirname(base_imagename) or None  # None means use system temp
+    filename_only = os.path.basename(base_imagename)
+
+    dest_image = tempfile.NamedTemporaryFile(
+        mode="w+b", dir=dir_path, prefix=filename_only + "-temp-", suffix=extension, delete=False
+    )
+
+    destname = dest_image.name
+    if debug:
+        print("Temp file name is: " + destname)
+
+    try:
+        shutil.copyfileobj(src_image, dest_image)
+    except shutil.Error as e:
+        print(
+            "Copy of imagefile "
+            + base_imagename
+            + extension
+            + " to scratch failed with error: "
+            + str(e)
+        )
+        return ""
+    except IOError as e:
+        print(
+            "Copy of imagefile "
+            + base_imagename
+            + extension
+            + ", failed with IOError: "
+            + str(e)
+        )
+        return ""
+    src_image.close()
+    dest_image.close()
+    return destname
