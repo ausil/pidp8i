@@ -1,0 +1,6 @@
+# The account the packaged service runs as, and the group its files
+# belong to. Home is a state directory (screen(1) wants a writable home),
+# not a login location: nologin keeps it unusable as an interactive
+# account. Created by %sysusers_create_package in %pre.
+u pidp8i - "PiDP-8/I simulator" /var/lib/pidp8i /sbin/nologin
+g pidp8i -

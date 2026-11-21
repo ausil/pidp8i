@@ -1,0 +1,42 @@
+.\" Distro-authored man page for the Fedora pidp8i package.
+.\" Candidate for upstreaming to the PiDP-8/I project.
+.TH USB-MOUNT 1 "November 21, 2026" "PiDP-8/I" "User Commands"
+.SH NAME
+usb-mount \- mount and unmount USB media for the PiDP-8/I (udev helper)
+.SH SYNOPSIS
+.B usb-mount
+{add|remove}
+.I device_name
+.RI "(e.g. sdb1)"
+.SH DESCRIPTION
+.B usb-mount
+is the helper behind the package's udev rule
+.RI ( /etc/udev/rules.d/68-usb-mount.rules ):
+when USB mass storage appears or disappears, udev runs it as
+.B add
+or
+.B remove
+with the device name, and it mounts or unmounts the device so that OS/8
+media on it can be reached by the simulator's
+.B load
+and
+.B dump
+commands on a headless cabinet.
+.PP
+It is not meant to be run by hand; the
+.B usb-mount@.service
+template unit it triggers does the actual mounting. Members of the
+.I pidp8i
+group may use the companion poweroff and reboot commands through the
+.I /etc/sudoers.d/pidp8i
+rule.
+.SH FILES
+.TP
+.B /etc/udev/rules.d/68-usb-mount.rules
+the trigger
+.TP
+.B /usr/lib/systemd/system/usb-mount@.service
+the instantiated mount service
+.SH SEE ALSO
+.BR udev (7),
+.BR systemd (1)

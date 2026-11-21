@@ -1,0 +1,19 @@
+diff --git a/auto.def b/auto.def
+--- a/auto.def
++++ b/auto.def
+@@ -44,6 +44,15 @@
+ define BOOTDIR  "$abspfx/share/boot"
+ define MEDIADIR "$abspfx/share/media"
+ 
++
++# RPM packaging builds the tree at the upstream prefix and relocates
++# it afterwards; the generated scripts are rewritten to match, but the
++# boot-script directory compiled into pidp8i-sim (via this @BOOTDIR@
++# substitution) can only be corrected at configure time. Let the
++# packager override it.
++if {[info exists env(PIDP8I_BOOTDIR)] && $env(PIDP8I_BOOTDIR) ne ""} {
++    define BOOTDIR $env(PIDP8I_BOOTDIR)
++}
+ # Define options the configure script shares with os8-run.  We insert a
+ # variant of each into the autosetup option list and also write a
+ # version to a Python library file that os8-run can read.  This avoids

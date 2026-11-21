@@ -1,0 +1,19 @@
+.\" Distro-authored man page for the Fedora pidp8i package.
+.\" Candidate for upstreaming to the PiDP-8/I project.
+.TH PIDP8I-SIM-NLS 1 "November 21, 2026" "PiDP-8/I" "User Commands"
+.SH NAME
+pidp8i-sim-nls \- PiDP-8/I simulator with the lamp simulator off
+.SH SYNOPSIS
+.B pidp8i-sim-nls
+.SH DESCRIPTION
+.B pidp8i-sim-nls
+is a hard link to
+.BR pidp8i-sim (1)
+that forces NLS mode: the incandescent lamp simulator (ILS) is
+disabled, so the panel LEDs simply show the lamp bits instead of the
+simulated bulb glow and decay. Everything else, including the
+requirement for real GPIO panel hardware, is as described in
+.BR pidp8i-sim (1).
+.SH SEE ALSO
+.BR pidp8i-sim (1),
+.BR pidp8i (1)

@@ -1,0 +1,61 @@
+# Local rpmlint overrides for the pidp8i package.
+#
+#   rpmlint -c packaging/rpmlint.toml packaging/pidp8i.spec dist-rpm/*.rpm
+#
+# These filters are deliberate and each one is a known false positive or
+# a not-yet-registered upstream state; none of them hides a real defect.
+# Add a stanza here only after the first rpmlint run proves the warning
+# fires and the reason is written down.
+
+# rpmlint config files are flat key = value TOML (like
+# /etc/xdg/rpmlint/fedora.toml), so Filters must not be nested in a
+# section header.
+Filters = [
+    # sudo(5) ignores sudoers.d files unless they are mode 0440 and not
+    # group/world writable, so the file cannot be "readable" by everyone.
+    '.*non-readable /etc/sudoers\.d/pidp8i 440.*',
+
+    # The unversioned group(pidp8i) provide is the standard output of
+    # rpm's sysusers-file generator (stock Fedora packages carry the
+    # identical shape: systemd-udev ships group(systemd-coredump),
+    # rpcbind ships group(rpc) beside the versioned user(...) lines).
+    # rpmlint calls it useless only because pidp8i is not yet in its
+    # Fedora users/groups registry; the same registration request also
+    # retires any future non-standard-uid/gid reports. Until upstream
+    # merges that registration, this is the documented position, not a
+    # hidden defect: the versioned provides are present and correct.
+    '.*useless-provides group\(pidp8i\).*',
+
+    # Domain words, not typos.
+    '.*spelling-error .*(blinkenlight|blinkenlights|DECtape|rk05|tu56|palbart|BARTGNO|PALGAIL|PDP|OS|teco|Erlang|blinken|usr).*',
+
+    # No no-manual-page-for-binary filter: every /usr/bin entry point
+    # now ships a page (upstream's palbart.1 plus the distro-written
+    # ones in packaging/man/).
+
+    # State directories are deliberately group-writable (the simulator
+    # writes savestates; os8pkg stages under obj/; the media images are
+    # written by the guest and by os8pkg); see tmpfiles and %defattr.
+    '.*non-standard-dir-perm /var/lib/pidp8i/(obj|save|media.*) 775.*',
+
+    # Importable modules, not entry points: they carry upstream's
+    # shebang line but are only ever imported (from /usr/bin/os8-*).
+    '.*non-executable-script /usr/share/pidp8i/lib/(os8script|os8util|simh|pidp8i/util)\.py.*',
+
+    # Example template shipped as documentation; @PYCMD@ is configure's
+    # substitution that %doc does not run.
+    '.*env-script-interpreter /usr/share/doc/pidp8i/examples/.*',
+
+    # cc8's own headers (the OS/8 C compiler's include path), not
+    # development files for linking against this package.
+    '.*devel-file-in-non-devel-package /usr/share/pidp8i/include/.*',
+
+    # autosetup's configure takes only --prefix; the tree's lib/ layout
+    # is fixed relative to it by upstream design (the RPM relocates it).
+    '.*configure-without-libdir-spec.*',
+
+    # Local snapshot tarball produced by packaging/build-rpm.sh (git
+    # archive); there is no download URL, which is the point - the SRPM
+    # is reproducible from the repository alone.
+    '.*invalid-url Source0.*',
+]

@@ -1,0 +1,85 @@
+.\" Distro-authored man page for the Fedora pidp8i package.
+.\" Candidate for upstreaming to the PiDP-8/I project.
+.TH OS8PKG 1 "November 21, 2026" "PiDP-8/I" "User Commands"
+.SH NAME
+os8pkg \- install OS/8 software packages onto a disk image
+.SH SYNOPSIS
+.B os8pkg
+.RI [ options "] [" command "] [" package ...]
+.SH DESCRIPTION
+.B os8pkg
+is the package manager for the OS/8 media shipped with this package.
+It reads package descriptions
+.RI ( pspec
+files) and installs their outputs onto a target RK05 image, the
+runtime disk by default. Building packages from their OS/8 sources
+also exists (the
+.B build
+command), but it needs the source tree layout
+.RI ( pspec/
+and
+.IR scripts/misc/ )
+that this RPM does not ship; installing prebuilt packages works.
+.SH OPTIONS
+.TP
+.BI \-\-target " image"
+target image file (default
+.IR v3d.rk05 )
+.TP
+.BI \-\-destdir " dir"
+destination directory for output files
+.TP
+.BR \-n ", " \-\-dry-run
+print what would happen; generate no files
+.TP
+.B \-v
+increase output verbosity
+.TP
+.BI \-d " N"
+set debug level
+.SH COMMANDS
+.TP
+.B install
+install
+.I pspec
+outputs onto the target image
+.TP
+.B uninstall
+delete
+.I pspec
+outputs and cleanups from the target image
+.TP
+.B verify
+verify the fidelity of packages installed on the target image
+.TP
+.B conflicts
+report outputs that exist in multiple
+.I pspec
+files
+.TP
+.B format
+display the output format for the given package names
+.TP
+.B deps
+create a make-style dependency file from inputs
+.TP
+.B include
+create an include script from selected scripts
+.TP
+.B build
+run the package builder (needs the unbuilt source tree)
+.TP
+.B all
+perform all of the above
+.SH FILES
+.TP
+.B /var/lib/pidp8i/media/os8/
+the images packages are installed onto (group-writable)
+.SH SEE ALSO
+.BR os8-run (1),
+.BR os8-cp (1),
+.BR dnf (8)
+(and
+.I doc/os8pkg.md
+under
+.IR /usr/share/doc/pidp8i/ )

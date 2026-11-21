@@ -1,0 +1,82 @@
+.\" Distro-authored man page for the Fedora pidp8i package.
+.\" Candidate for upstreaming to the PiDP-8/I project.
+.TH OS8-CP 1 "November 21, 2026" "PiDP-8/I" "User Commands"
+.SH NAME
+os8-cp \- copy files between the host and an OS/8 disk image
+.SH SYNOPSIS
+.B os8-cp
+.RI [ \-dhvq "] [" "\-<dev><unit>[s]" " image" ] ...
+.RI [ [ \-abiyz "] [" src ] ...
+.I dest
+.br
+.B os8-cp
+.RI [ \-dhvq "] [" \-\-action-file " action-file" ]
+.SH DESCRIPTION
+.B os8-cp
+boots an OS/8 environment in the simulator and then behaves like the
+POSIX
+.BR cp (1)
+it is named after, copying files between the host filesystem and the
+OS/8 environment under program control.
+.PP
+The copy direction follows from the arguments: a file specification
+with a colon in it (for example
+.IR DTA0:PROG.PA )
+is an OS/8 file, everything else is a host path.
+A single
+.I src
+with a plain
+.I dest
+names a host file; with several
+.IR src s,
+.I dest
+is a host directory or an OS/8 device name.
+.PP
+Device images are attached with
+.BI \- dev unit
+pairs:
+.I dev
+is one of
+.BR rk ,
+.BR td ,
+.B dt
+or
+.B rx
+(the SIMH PDP-8 devices), and
+.I unit
+a unit number valid in both SIMH and the booted OS/8 system. Appending
+an
+.RB s
+(for example
+.BR \-rk0s )
+designates that image as the system image to boot; exactly one system
+image may be so marked, and it must contain a working boot block.
+.PP
+Remember that OS/8 writes to the
+.B SYS:
+and
+.B DSK:
+RAM-disk devices are lost when the simulator exits: those copies are
+for the session, not durable storage.
+.SH OPTIONS
+.TP
+.B \-a \-b \-i \-y \-z
+copy actions and modes described in the verbose usage message
+.RB ( "\-v \-h" );
+.B \-z
+zeroes pre-existing images before attaching.
+.TP
+.BI \-\-action-file " action-file"
+take the operation list from a file; overrides earlier device and file
+arguments on the command line.
+.TP
+.B \-d\fR,\ \-v\fR,\ \-q\fR,\ \-h
+debug, verbose, quiet, usage
+.SH EXAMPLES
+.nf
+$ os8-cp \-rk0s os8v3d-patched.rk05 \-dt0 scratch.tu56 \-a prog.pa DTA0:PROG.PA
+.fi
+.SH SEE ALSO
+.BR os8-run (1),
+.BR os8pkg (1),
+.BR cp (1)

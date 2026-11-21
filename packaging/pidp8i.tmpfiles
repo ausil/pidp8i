@@ -1,0 +1,24 @@
+# Created by %tmpfiles_create_package in %post, and again on every boot.
+#
+# /var/lib/pidp8i          root of the state tree (home of the pidp8i
+#                          account, which never writes here). MUST stay
+#                          root-owned: tmpfiles' safe-path check refuses
+#                          to recurse (Z) through a directory owned by
+#                          a non-root user, and this being pidp8i-owned
+#                          is what blocked the media assignment below.
+#                          Matches the %ghost metadata in the spec.
+# /var/lib/pidp8i/run      PID files (upstream keeps them in the tree;
+#                          the RPM moved run/ to state).
+# /var/lib/pidp8i/save     savestate files (the boot scripts' savestate
+#                          script was rewritten to write here).
+# /var/lib/pidp8i/obj      os8pkg's staging directory (dirs.py obj/).
+d /var/lib/pidp8i 0755 root root -
+d /var/lib/pidp8i/run 0755 pidp8i pidp8i -
+d /var/lib/pidp8i/save 0775 pidp8i pidp8i -
+d /var/lib/pidp8i/obj 0775 pidp8i pidp8i -
+# The media images ship as root:root package files (so rpm metadata
+# carries no reference to the service account); Z recursively assigns
+# them to pidp8i:pidp8i after install (and re-assigns on every boot),
+# while the modes from the package (0664 files / 0775 dirs) stay put.
+# Operators in the pidp8i group write through the group bit.
+Z /var/lib/pidp8i/media - pidp8i pidp8i -

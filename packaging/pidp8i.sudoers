@@ -1,0 +1,6 @@
+# The front panel's poweroff/reboot buttons (and the halt/restart
+# instructions the OS/8 console prints) reach for systemctl. Upstream's
+# etc/sudoers.in hardcodes the single user who ran ./configure; the
+# package grants the pidp8i group instead, so any operator account added
+# to it gets the same capability. Mode 0440 is what sudo(5) requires.
+%pidp8i ALL=(ALL) NOPASSWD: /usr/bin/systemctl poweroff, /usr/bin/systemctl reboot

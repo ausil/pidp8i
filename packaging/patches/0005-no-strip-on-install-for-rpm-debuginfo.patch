@@ -1,0 +1,12 @@
+diff --git a/Makefile.in b/Makefile.in
+--- a/Makefile.in
++++ b/Makefile.in
+@@ -466,7 +466,7 @@
+ 	@for f in $(BINS) ; do \
+ 		dest=$(PREFIX)/$$f ; \
+ 		echo "Installing binary $$dest..." ; \
+-		@INSTALL@ -m 755 -D -s $$f $(DESTDIR)$$dest ; \
++		@INSTALL@ -m 755 -D $$f $(DESTDIR)$$dest ; \
+ 	done
+ 	@for f in $(BIN_SCRIPTS) ; do \
+ 		dest=$(PREFIX)/bin/$$(basename $$f) ; \

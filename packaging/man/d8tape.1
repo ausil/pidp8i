@@ -1,0 +1,41 @@
+.\" Distro-authored man page for the Fedora pidp8i package.
+.\" Candidate for upstreaming to the PiDP-8/I project.
+.TH D8TAPE 1 "November 21, 2026" "PiDP-8/I" "User Commands"
+.SH NAME
+d8tape \- disassemble and convert DECtape (paper tape) images
+.SH SYNOPSIS
+.B d8tape
+.RI [ options ]
+.I papertapefile
+.RI [ papertapefile ...]
+.SH DESCRIPTION
+.B d8tape
+dumps the RIM- or BIN-formatted DECtape/paper-tape files named on the
+command line, disassembling them for reading. With
+.B \-r
+and/or
+.B \-b
+it also writes RIM and/or BIN reformatted copies, named after the input
+with
+.I .rim
+or
+.I .bin
+appended.
+.SH OPTIONS
+.TP
+.B \-b
+generate a BIN-formatted output (adds
+.IR .bin )
+.TP
+.B \-d
+suppress disassembly (conversion-only mode)
+.TP
+.B \-r
+generate a RIM-formatted output (adds
+.IR .rim )
+.TP
+.B \-v
+verbose operation
+.SH SEE ALSO
+.BR ptp2txt (1),
+.BR palbart (1)

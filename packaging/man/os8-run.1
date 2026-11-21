@@ -1,0 +1,54 @@
+.\" Distro-authored man page for the Fedora pidp8i package.
+.\" Candidate for upstreaming to the PiDP-8/I project.
+.TH OS8-RUN 1 "November 21, 2026" "PiDP-8/I" "User Commands"
+.SH NAME
+os8-run \- run OS/8 boot scripts in the PDP-8 simulator
+.SH SYNOPSIS
+.B os8-run
+.RI [ \-h ]
+.RI [ \-d ]
+.RI [ \-v | \-vv ]
+.RI [ \-\-enable " enable_option" ] ...
+.RI [ \-\-disable " disable_option" ] ...
+.I script
+.RI [ script ...]
+.SH DESCRIPTION
+.B os8-run
+boots an OS/8 environment in the SIMH PDP-8 simulator and executes the
+named boot scripts against it. A boot script is a text file of
+directives (attach an RK05 or TU56 image, type characters at the
+console, wait for output, save state, and so on) as used throughout
+.IR /usr/share/pidp8i/boot .
+It is the driver behind the OS/8 tools in this package: the runtime
+disk, the Combined Kit and the game packs are all assembled and
+maintained by running scripts of this kind.
+.SH OPTIONS
+.TP
+.B \-h
+show the usage message and exit
+.TP
+.B \-d
+debug output
+.TP
+.B \-v\fR,\ \-vv
+progress information on what the script is doing
+.TP
+.BI \-\-enable " enable_option"
+.TQ
+.BI \-\-disable " disable_option"
+turn individual script features on or off; the usage message lists the
+known option names for the scripts given
+.SH EXAMPLES
+.nf
+$ cd /usr/share/pidp8i/boot && os8-run add.script
+.fi
+.SH FILES
+.TP
+.B /var/lib/pidp8i/media/
+the images scripts attach to (the guest writes here; group-writable)
+.SH SEE ALSO
+.BR os8-cp (1),
+.BR os8pkg (1),
+.BR pdp8 (1),
+and the OS/8 documentation under
+.IR /usr/share/doc/pidp8i/doc/

@@ -1,0 +1,16 @@
+diff --git a/tools/version b/tools/version
++++ b/tools/version
+@@ -45,6 +45,13 @@
+     exit 0;
+ }
+ 
++# Distro packaging builds from a source tarball with no Fossil checkout
++# in it, so let the packager say what this snapshot is.
++if ($ENV{PIDP8I_VERSION}) {
++    print $ENV{PIDP8I_VERSION}, "\n";
++    exit 0;
++}
++
+ my $topdir = dirname($0) . '/..';
+ if (-e "$topdir/.fslckout") {
+     # Get version info from Fossil

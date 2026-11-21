@@ -1,0 +1,30 @@
+.\" Distro-authored man page for the Fedora pidp8i package.
+.\" Candidate for upstreaming to the PiDP-8/I project.
+.TH TECO-PI-DEMO 1 "November 21, 2026" "PiDP-8/I" "User Commands"
+.SH NAME
+teco-pi-demo \- demonstration of scripted control of the simulator
+.SH SYNOPSIS
+.B teco-pi-demo
+.SH DESCRIPTION
+.B teco-pi-demo
+is the shipped example of driving
+.BR pidp8i-sim (1)
+programmatically: it spawns the engine through the private
+.IR simh.py
+module (pexpect under the hood) and runs a short scripted session with
+it, the same machinery
+.BR os8-run (1)
+and
+.BR os8-cp (1)
+are built on. It is a demonstration, not an operator tool: see
+.IR /usr/share/doc/pidp8i/examples/ ,
+and in particular the
+.I class-os8script-demo
+template, for the extension points.
+.PP
+It requires the simulator to be runnable (a cabinet, or the
+plain-console engine as installed), and it exits with a pexpect error
+if it cannot spawn it.
+.SH SEE ALSO
+.BR os8-run (1),
+.BR pidp8i-sim (1)

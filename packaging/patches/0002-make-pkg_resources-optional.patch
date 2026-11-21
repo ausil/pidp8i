@@ -1,0 +1,40 @@
+diff --git a/auto.def b/auto.def
++++ b/auto.def
+@@ -527,7 +527,9 @@
+ define PYCMD $pycmd
+ define PYVER $pyver
+ msg-result "Python $pyver is installed here as '$pycmd'."
+-foreach mfull {pexpect pkg_resources pyyaml} {
++# pkg_resources is not required: simh.py checks the pexpect version with
++# importlib.metadata when setuptools has dropped pkg_resources (setuptools 83+).
++foreach mfull {pexpect pyyaml} {
+     set mshort [regsub "py" $mfull ""]
+     set mapt [regsub "_" $mshort "-"]
+     set test "import $mshort"
+diff --git a/lib/simh.py.in b/lib/simh.py.in
++++ b/lib/simh.py.in
+@@ -35,7 +35,10 @@
+ ########################################################################
+ 
+ import os
+-import pkg_resources
++try:
++    import pkg_resources        # setuptools < 83
++except ImportError:
++    pkg_resources = None        # setuptools 83+ (Fedora 45): see pev4 below
+ import subprocess
+ import time
+ import re
+@@ -321,7 +324,11 @@
+         # Turn off pexpect's default inter-send() delay.  We add our own as
+         # necessary.  The conditional tracks an API change between 3 and 4.
+         # Type checking is ignored here, but we could pip install packaging and use a more modern construct.
+-        pev4 = pkg_resources.get_distribution("pexpect").parsed_version > pkg_resources.parse_version("4.0")  # type: ignore
++        if pkg_resources is not None:
++            pev4 = pkg_resources.get_distribution("pexpect").parsed_version > pkg_resources.parse_version("4.0")  # type: ignore
++        else:
++            from importlib.metadata import version as _pkg_version
++            pev4 = [int(n) for n in re.findall(r"\d+", _pkg_version("pexpect"))[:2]] > [4, 0]
+         self._child.delaybeforesend = None if pev4 else 0
+ 
+         # Wait for the simulator's startup message.

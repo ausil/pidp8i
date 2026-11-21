@@ -1,0 +1,51 @@
+.\" Distro-authored man page for the Fedora pidp8i package.
+.\" Candidate for upstreaming to the PiDP-8/I project.
+.TH PIDP8I-SIM 1 "November 21, 2026" "PiDP-8/I" "User Commands"
+.SH NAME
+pidp8i-sim \- PDP-8 simulator with PiDP-8 front-panel emulation
+.SH SYNOPSIS
+.B pidp8i-sim
+.br
+.B pidp8i-sim-nls
+.br
+.B pidp8i-sim-ils
+.SH DESCRIPTION
+.B pidp8i-sim
+is the SIMH PDP-8 engine built for the PiDP-8/I cabinet: it drives the
+physical or simulated front panel (lamps, switches, pulse and run
+buttons) over the Raspberry Pi GPIO, and boots scripts from
+.IR /usr/share/pidp8i/boot
+when the panel's boot-selector switches say so.
+.PP
+On a machine without GPIO panel hardware it refuses to run:
+it prints
+.I "No GPIO chips found"
+and exits 1. Start the simulator through
+.BR pidp8i (1)
+(the user service and its screen session) rather than directly, and use
+.BR pdp8 (1)
+when you just want the simulator console without a panel.
+.PP
+The two additional names are hard links to the same binary that force
+a lamp mode instead of deciding from the build configuration:
+.B pidp8i-sim-nls
+runs with the incandescent lamp simulator disabled (NLS), and
+.B pidp8i-sim-ils
+forces the incandescent lamp simulator (ILS) that mimics the glow and
+decay of the original bulbs on the panel LEDs.
+.SH FILES
+.TP
+.B /usr/share/pidp8i/boot/
+boot scripts, selected by front-panel switch state
+.TP
+.B /var/lib/pidp8i/run/
+PID file of the running session
+.SH SEE ALSO
+.BR pidp8i (1),
+.BR pdp8 (1),
+.BR pidp8i-test (1),
+.BR scanswitch (8),
+the upstream README and
+.I doc/configure-options.md
+under
+.IR /usr/share/doc/pidp8i/

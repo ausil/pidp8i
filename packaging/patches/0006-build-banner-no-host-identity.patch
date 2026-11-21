@@ -1,0 +1,30 @@
+diff --git a/auto.def b/auto.def
+index 6c25f97..6e690b1 100644
+--- a/auto.def
++++ b/auto.def
+@@ -497,10 +497,21 @@ if {$status != 0} {
+ define VERSION $version
+ 
+ # Get host, user, and date info for use by media/os8/init.tx.
+-catch {exec hostname} host
+-set user $::env(USER)
+-define BUILDUSER "$user@$host"
+-define BUILDTS [clock format [clock seconds] -format "%Y.%m.%d at %T %Z"]
++# RPM builds must not stamp the build host's identity or a
++# nondeterministic timestamp into the boot banner, so let the packager
++# state both. Without the env vars, upstream behaviour is unchanged.
++if {[info exists ::env(PIDP8I_BUILDUSER)]} {
++    define BUILDUSER $::env(PIDP8I_BUILDUSER)
++} else {
++    catch {exec hostname} host
++    set user $::env(USER)
++    define BUILDUSER "$user@$host"
++}
++if {[info exists ::env(PIDP8I_BUILDTS)]} {
++    define BUILDTS $::env(PIDP8I_BUILDTS)
++} else {
++    define BUILDTS [clock format [clock seconds] -format "%Y.%m.%d at %T %Z"]
++}
+ 
+ # The os8-run script requires Python 2 or 3 and some non-core modules.
+ set status [catch {exec python3 -c exit} result]

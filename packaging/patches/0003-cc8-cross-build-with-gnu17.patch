@@ -1,0 +1,11 @@
+diff --git a/Makefile.in b/Makefile.in
++++ b/Makefile.in
+@@ -73,7 +73,7 @@
+ # primarily because it's K&R C.  Building under SIM_CFLAGS spews
+ # pages of warnings.  The only thing we share is whether to build
+ # a debug or optimized version, from BUILDMODE, set by auto.def.
+-CC8_CROSS_CFLAGS = -w @BUILDMODE@
++CC8_CROSS_CFLAGS = -w -std=gnu17 @BUILDMODE@
+ 
+ # Krten's d8tape doesn't need much in the way of options.  It builds
+ # without warnings under the supported version of Raspbian.  On some

@@ -1,0 +1,22 @@
+.\" Distro-authored man page for the Fedora pidp8i package.
+.\" Candidate for upstreaming to the PiDP-8/I project.
+.TH TXT2PTP 1 "November 21, 2026" "PiDP-8/I" "User Commands"
+.SH NAME
+txt2ptp \- punch text into a PDP-8 paper-tape image
+.SH SYNOPSIS
+.B txt2ptp
+.RI [ file ...]
+.SH DESCRIPTION
+.B txt2ptp
+is the text-to-paper-tape direction of the
+.BR ptp2txt (1)
+conversion pair: it reads readable PDP-8 tape text and writes the
+punched
+.I .pt
+/
+.I .ptp
+image, leader, information block and parity included. With no file
+arguments it filters stdin to stdout.
+.SH SEE ALSO
+.BR ptp2txt (1),
+.BR palbart (1)

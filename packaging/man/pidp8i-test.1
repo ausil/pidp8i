@@ -1,0 +1,23 @@
+.\" Distro-authored man page for the Fedora pidp8i package.
+.\" Candidate for upstreaming to the PiDP-8/I project.
+.TH PIDP8I-TEST 1 "November 21, 2026" "PiDP-8/I" "User Commands"
+.SH NAME
+pidp8i-test \- PiDP-8/I front-panel GPIO self-test
+.SH SYNOPSIS
+.B pidp8i-test
+.SH DESCRIPTION
+.B pidp8i-test
+walks the PiDP-8/I front panel: it drives the lamps and reads back the
+switch matrix over the Raspberry Pi GPIO so you can verify the panel
+wiring and the GPIO pin-assignment configuration (the
+.BR gpio-hog /
+overlay setup) before trusting the panel to the simulator.
+.PP
+It needs a real cabinet: on any other machine it prints
+.I "No GPIO chips found"
+and exits without testing anything.
+.SH SEE ALSO
+.BR pidp8i-sim (1),
+.BR scanswitch (8),
+the panel-configuration notes under
+.I /usr/share/doc/pidp8i/

@@ -1,0 +1,35 @@
+.\" Distro-authored man page for the Fedora pidp8i package.
+.\" Candidate for upstreaming to the PiDP-8/I project.
+.TH PDP8 1 "November 21, 2026" "PiDP-8/I" "User Commands"
+.SH NAME
+pdp8 \- plain SIMH PDP-8 simulator console
+.SH SYNOPSIS
+.B pdp8
+.SH DESCRIPTION
+.B pdp8
+is the PiDP-8/I build of the SIMH PDP-8 simulator with the front-panel
+code inactive: it is the same executable as
+.BR pidp8i-sim (1),
+started under a name that disables the panel emulation. Lamps and
+switches play no part; you get the classic SIMH
+.B sim>
+prompt on the terminal, and
+.B q
+exits.
+.PP
+It is the engine that
+.BR os8-run (1)
+and the boot scripts drive non-interactively, and the way to run
+PDP-8 or OS/8 images on a machine with no PiDP-8/I hardware.
+.SH FILES
+.TP
+.B /usr/share/pidp8i/boot/
+boot scripts (also the working directory of many OS/8 tools)
+.TP
+.B /var/lib/pidp8i/media/
+the OS/8 RK05 and TU56 images
+.SH SEE ALSO
+.BR pidp8i-sim (1),
+.BR os8-run (1),
+the upstream README under
+.IR /usr/share/doc/pidp8i/

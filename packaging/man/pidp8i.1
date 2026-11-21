@@ -1,0 +1,66 @@
+.\" Distro-authored man page for the Fedora pidp8i package.
+.\" Candidate for upstreaming to the PiDP-8/I project.
+.TH PIDP8I 1 "November 21, 2026" "PiDP-8/I" "User Commands"
+.SH NAME
+pidp8i \- control the PiDP-8/I simulator user service
+.SH SYNOPSIS
+.B pidp8i
+.I command
+.RI [ arguments ]
+.SH DESCRIPTION
+.B pidp8i
+is the operator front end for the simulator on a PiDP-8/I cabinet. It
+wraps the
+.BR systemd (1)
+user service
+.IR pidp8i.service ,
+so you do not have to type the canonical
+.B "systemctl --user"
+form: a verb such as
+.BR start ,
+.BR stop ,
+.B restart
+or
+.B status
+is passed through as
+.BI "systemctl --user " command
+.B pidp8i .
+.PP
+The session itself runs inside
+.BR screen (1)
+(the console manager named in
+.IR /etc/pidp8i/pidp8i.rc ;
+tmux is the alternative), which keeps the simulator console reachable
+after the SSH session that started it is gone.
+.PP
+Start and stop have panel semantics beyond plain unit control: the
+front-panel switches are scanned first (via
+.BR scanswitch ),
+so the STOP switch can veto a start and the boot-selector switches can
+pick which script from
+.IR /usr/share/pidp8i/boot
+the simulator boots when it comes up.
+.SH OPTIONS
+.TP
+.B install
+Upstream helper that copies the user unit into
+.I ~/.local/share/systemd/user
+and enables it; packaged for parity with
+.BR "make install" ,
+not normally needed: the RPM ships the unit in
+.I /usr/lib/systemd/user
+and
+.B "systemctl --user enable pidp8i"
+does the rest.
+.SH FILES
+.TP
+.B /etc/pidp8i/pidp8i.rc
+operator configuration (console manager, paths)
+.TP
+.B /usr/lib/systemd/user/pidp8i.service
+the user unit this script controls
+.SH SEE ALSO
+.BR pidp8i-sim (1),
+.BR pdp8 (1),
+.BR systemctl (1),
+.BR screen (1)

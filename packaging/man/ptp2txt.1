@@ -1,0 +1,39 @@
+.\" Distro-authored man page for the Fedora pidp8i package.
+.\" Candidate for upstreaming to the PiDP-8/I project.
+.TH PTP2TXT 1 "November 21, 2026" "PiDP-8/I" "User Commands"
+.SH NAME
+ptp2txt, txt2ptp \- convert between paper-tape images and text
+.SH SYNOPSIS
+.B ptp2txt
+.RI [ file ...]
+.br
+.B txt2ptp
+.RI [ file ...]
+.SH DESCRIPTION
+.B ptp2txt
+converts a PDP-8 paper-tape image (the
+.I .pt
+/
+.I .ptp
+formats used by PALGAIL/BARTGNO output and the OS/8 tools) into the
+readable text form, and
+.B txt2ptp
+converts in the other direction, re-punching the leader, information
+and parity blocks.
+.PP
+Both names are the same program: the direction is chosen by the name
+it was invoked as. With no file arguments it acts as a stdin-to-stdout
+filter; with file arguments it converts each one, writing the result
+beside it with the corresponding extension. Unreadable files are
+reported (
+.IR "Open of input file ... failed" )
+and skipped.
+.SH EXAMPLES
+.nf
+$ ptp2txt add.pt              # dump a punched tape as text
+$ txt2ptp notes.txt           # punch text back into a tape image
+$ cat boot.pt | ptp2txt       # filter form
+.fi
+.SH SEE ALSO
+.BR palbart (1),
+.BR d8tape (1)

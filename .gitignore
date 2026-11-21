@@ -1,0 +1,51 @@
+# autosetup build (in-tree only; upstream does not support VPATH builds)
+/Makefile
+config.log
+config.status
+adrules.mk
+autosetup/jimsh0
+obj/
+
+# generated from .in templates by configure/make (the .in files are the
+# tracked sources; these are the products)
+bin/*
+!bin/.ignore
+!bin/cc8-to-os8
+!bin/usb-mount
+!bin/*.in
+lib/*.py
+lib/pidp8i/*.py
+__pycache__/
+boot/*.script
+!boot/ratio.script
+!boot/savestate.script
+etc/pidp8i.service
+etc/usb-mount@.service
+etc/sudoers
+media/os8/init.tx
+media/os8/3finit.tx
+media/os8/ock-init.tx
+tools/os8-cmp
+tools/os8-progtest
+tools/simh-bisect
+tools/simh-update
+examples/host/class-os8script-demo.py
+src/config.h
+src/e8/e8defs.pa
+src/pidp8i/gpio-common.c
+
+# RPM work
+/bld/
+/stage/
+/tmptest/
+dist/
+dist-rpm/
+*.src.rpm
+.rpmscan/
+build-rpm.log
+install-only.log
+
+# The fossil checkout database. The repo was imported to git; fossil is
+# not used here (configure no longer needs it - see
+# packaging/patches/0001).
+.fslckout

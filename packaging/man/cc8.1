@@ -1,0 +1,58 @@
+.\" Distro-authored man page for the Fedora pidp8i package.
+.\" Candidate for upstreaming to the PiDP-8/I project.
+.TH CC8 1 "November 21, 2026" "PiDP-8/I" "User Commands"
+.SH NAME
+cc8 \- small C compiler targeting the PDP-8
+.SH SYNOPSIS
+.B cc8
+.RI [ \-tcsah ]
+.RI [ \-dSYM [ =VALUE ]]
+.RI [ \-l [ log ]]
+.I files
+.SH DESCRIPTION
+.B cc8
+compiles a useful subset of C into PALGAIL assembly for the PDP-8,
+following the model of the small compilers for 8-bit machines (the
+usage line names the tool after its cross variant,
+.IR sccXXXX ).
+Its standard headers
+.RI ( init.h ,
+.IR libc.h )
+install under
+.IR /usr/share/pidp8i/include .
+.SH OPTIONS
+.TP
+.B \-t
+output the C source as assembler comments
+.TP
+.B \-a
+do not put an argument count in the A to function calls
+.TP
+.BI \-d " SYM[=VALUE]"
+define a macro
+.TP
+.B \-u
+allow the undocumented 8085 instructions LDSI, LHLX and SHLX in the
+cross-compilation path
+.TP
+.B \-s
+assemble the generated output (not implemented)
+.TP
+.B \-c
+link (not implemented)
+.TP
+.B \-h
+show usage
+.TP
+.BI \-l [ log ]
+write most or all messages to a log file
+.PP
+File arguments are the sources to compile; with no file names it reads
+stdin and writes stdout.
+.SH SEE ALSO
+.BR palbart (1),
+.BR ptp2txt (1),
+and
+.I doc/cc8-manual.md
+under
+.IR /usr/share/doc/pidp8i/
