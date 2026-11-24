@@ -121,6 +121,8 @@ Source0:        %{name}-%{version}-%{srcdate}.tar.gz
 Source1:        %{name}.sysusers
 Source2:        %{name}.tmpfiles
 Source3:        %{name}.sudoers
+# Installed as 99-pidp8i.rules: runs after systemd's 90-gpio.rules.
+Source4:        %{name}.rules
 # Staged by packaging/build-rpm.sh from the same revision as the
 # tarball, like the Sources above.
 Patch0001:      0001-tools-version-accept-PIDP8I_VERSION-override.patch
@@ -401,7 +403,7 @@ printf 'enable pidp8i.service\n' > %{buildroot}%{_presetdir}/pidp8i.preset
 
 install -D -m 0644 etc/udev.rules \
     %{buildroot}%{_udevrulesdir}/68-usb-mount.rules
-install -D -m 0644 etc/99-pidp8i.rules \
+install -D -m 0644 %{SOURCE4} \
     %{buildroot}%{_udevrulesdir}/99-pidp8i.rules
 install -D -m 0440 %{SOURCE3} %{buildroot}%{_sysconfdir}/sudoers.d/%{name}
 install -D -m 0644 %{SOURCE1} %{buildroot}%{_sysusersdir}/%{name}.conf

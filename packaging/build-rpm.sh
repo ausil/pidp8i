@@ -61,6 +61,7 @@ stage packaging/pidp8i.spec "$spec"
 stage packaging/pidp8i.sysusers "$dist/pidp8i.sysusers"
 stage packaging/pidp8i.tmpfiles "$dist/pidp8i.tmpfiles"
 stage packaging/pidp8i.sudoers  "$dist/pidp8i.sudoers"
+stage packaging/pidp8i.rules    "$dist/pidp8i.rules"
 for p in packaging/patches/*.patch; do
 	stage "$p" "$dist/$(basename "$p")"
 done

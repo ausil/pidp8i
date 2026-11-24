@@ -1,0 +1,21 @@
+# /usr/lib/udev/rules.d/99-pidp8i.rules
+#
+# Which GPIO character device the unprivileged pidp8i account may open.
+# Same design as the PiDP-10 packaging's 99-pidp10.rules: rather than
+# adding the account to the distribution's "gpio" group — which is every
+# gpiochip on the machine, PMIC blocks included — this re-tags only the
+# controller the PiDP-8/I panel matrix is actually wired to, and only
+# into the simulator's own group.
+#
+# The panel hangs off the SoC GPIO controller: pinctrl-bcm2835 on the
+# Pi 0 through Pi 4 (the Pi 3 among them), pinctrl-rp1 on the Pi 5.
+# Everywhere else no rule applies, the nodes keep the distro mode
+# (systemd's 90-gpio.rules: root:gpio 0660), and the software's own
+# "cannot open any GPIO chip" message is the honest answer.
+#
+#  systemd-udevd(8), udev(7)
+#  After dropping this in by hand: udevadm control --reload && \
+#  udevadm trigger -c add /dev/gpiochip*
+
+KERNEL=="gpiochip*", SUBSYSTEM=="gpio", \
+    DRIVERS=="pinctrl-bcm2835|pinctrl-rp1", GROUP="pidp8i", MODE="0660"
