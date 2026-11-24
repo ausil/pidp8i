@@ -139,7 +139,7 @@ index 06cb9d9..f09452c 100644
 +*   `libgpiod-devel` (or the `pkgconfig(libgpiod)` equivalent) at build
 +    time.
 +*   The user running `pidp8i` needs read/write access to `/dev/gpiochip0`;
-+    the usual mechanism is membership in the `gpio` group.
++    the RPM grants this via 99-pidp8i.rules (group `pidp8i`), not `gpio`.
 +*   No other driver may hold the pins the panel uses, in particular
 +    GPIOs 14/15 on Pi 3-family boards, which are also the Bluetooth
 +    UART lines: `dtoverlay=disable-bt` and a disabled serial console
@@ -486,9 +486,9 @@ index 0000000..c39040f
 +                    "the RP1 drivers are modules (rp1_pci, pinctrl-rp1).\n");
 +        }
 +        if (errno == EACCES) {
-+            fprintf(stderr, "pidp8i: hint: check group membership "
-+                    "(ls -l /dev/gpiochip*; id) and SELinux (ls -Z, "
-+                    "ausearch -m avc -ts recent).\n");
++            fprintf(stderr, "pidp8i: hint: check who may open the node: "
++                    "ls -l /dev/gpiochip* (99-pidp8i.rules assigns the "
++                    "panel chip to group pidp8i); SELinux: ausearch avc.\n");
 +        }
 +        return -EIO;
 +    }

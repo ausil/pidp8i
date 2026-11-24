@@ -28,9 +28,11 @@
 # relocated text files (scripts, Python, boot scripts, unit files). It
 # is safe because the boot-script directory is the only install path
 # any compiled binary embeds. Doing the rest in the spec rather than
-# across auto.def/Makefile.in keeps upstream patches to the six small
-# ones without which the tree does not build on Fedora 45 at all, so a
-# fossil/git re-import only replays those.
+# across auto.def/Makefile.in keeps upstream patches to seven: six
+# small build fixes without which the tree does not build on Fedora 45
+# at all, plus the libgpiod chardev backend (Patch0007, a downstream
+# feature, not a build fix), so a fossil/git re-import only replays
+# those.
 #
 # Why the payloads under /var/lib: the OS/8 runtime RK05 images are
 # written by the running simulator (the guest creates files on its
@@ -103,7 +105,7 @@
 
 Name:           pidp8i
 Version:        2026.04.15
-Release:        1.%{srcdate}%{?dist}
+Release:        2.%{srcdate}%{?dist}
 Summary:        PDP-8/I simulator with PiDP-8 front-panel emulation
 
 # The tree mixes licenses (COPYING.md walks through them): the SIMH
@@ -568,6 +570,20 @@ python3 -c 'import pidp8i, pidp8i.dirs, pidp8i.util, pidp8i.ips, pidp8i.os8opts,
 %{_tmpfilesdir}/%{name}.conf
 
 %changelog
+* Tue Nov 24 2026 Dennis Gilmore <dennis@ausil.us> - 2026.04.15-2.20261120
+- libgpiod backend (Patch0007) fixed for real-panel use: callers stop
+  the GPIO scan/paint thread before touching panel pins from their own
+  thread (libgpiod line requests are shared state, unlike the mmap
+  backend's atomic register writes), and a line's bias is requested
+  AS_IS unless the panel code explicitly asked for a pull. Per-direction
+  bias writes were both erasing the board-relied-on SoC pull state and
+  serializing every scan/paint frame behind the BCM2835 GPPUD/GPPUDCLK
+  locked sequence. Chip-open failures now report the first meaningful
+  errno (permissions vs missing device). Documented permission model is
+  the packaged 99-pidp8i.rules (pidp8i group), not distro gpio group.
+- Ownership/permission fixes in sysusers/tmpfiles fragments; udev rule
+  now ships under packaging/ (installed as a Source).
+
 * Fri Nov 20 2026 Dennis Gilmore <dennis@ausil.us> - 2026.04.15-1.20261120
 - First packaged form: snapshot of the fossil-to-git import (trunk past
   the upstream 2026.04.15 release). Built at upstream's own prefix and
