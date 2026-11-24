@@ -16,7 +16,7 @@
 #   /opt/pidp8i/bin          -> /usr/bin
 #   /opt/pidp8i/libexec      -> /usr/libexec/pidp8i
 #   /opt/pidp8i/lib          -> /usr/share/pidp8i/lib        (pure Python)
-#   /opt/pidp8i/share/boot   -> /usr/share/pidp8i/boot
+#   /opt/pidp8i/share/boot   -> /var/lib/pidp8i/boot         (writable)
 #   /opt/pidp8i/share/include-> /usr/share/pidp8i/include
 #   /opt/pidp8i/share/man    -> /usr/share/man
 #   /opt/pidp8i/share/media  -> /var/lib/pidp8i/media        (writable)
@@ -32,13 +32,17 @@
 # ones without which the tree does not build on Fedora 45 at all, so a
 # fossil/git re-import only replays those.
 #
-# Why media is the one payload under /var/lib: the OS/8 runtime RK05
-# images are written by the running simulator (the guest creates files
-# on its disk), and os8pkg installs packages into them. /usr must be
-# read-only for an upgrade to be safe, so media goes to the state tree
-# exactly like pidp10's systems directories. It ships root:root with
-# group-writable modes and tmpfiles assigns it to the pidp8i service
-# account, keeping the service account out of the rpm file metadata.
+# Why the payloads under /var/lib: the OS/8 runtime RK05 images are
+# written by the running simulator (the guest creates files on its
+# disk), os8pkg installs packages into them, and operators tailor the
+# boot scripts on site. /usr must be read-only for an upgrade to be
+# safe, so disks, tapes, and boot scripts go to the state tree
+# exactly like pidp10's systems directories, root:root with
+# group-writable modes, tmpfiles assigning them to the pidp8i service
+# account so the account stays out of the rpm file metadata. All of it
+# is %%config(noreplace %verify(not md5 size mtime user group)): the
+# simulator's writes must not be flagged by rpm -V and must not be
+# clobbered by an upgrade; the packaged versions arrive as *.rpmnew.
 # Reinstalling media images after corruption: `dnf reinstall pidp8i`
 # restores them.
 #
@@ -63,10 +67,23 @@
 #     drops that -s, so the files reach the buildroot with their
 #     -g/-flto debug info and rpmbuild's brp-strip/find-debuginfo split
 #     the pidp8i-debuginfo subpackage the normal way.
-#   * The service model is upstream's: a *user* unit driven by the
-#     bin/pidp8i script (screen/tmux session + NotifyAccess). %%install
-#     also corrects the script's `install` subcommand, which bakes in
-#     the build user's home for the unit destination, to use $HOME.
+#   * The service model is the pidp10 one, not upstream's: a *system*
+#     unit with User=pidp8i, enabled by a preset file (never
+#     `systemctl enable` in a scriptlet; preset-all returns the
+#     decision to the admin). Upstream's unit is a user unit because
+#     the from-source cabinet runs it as the operator login with
+#     enable-linger; the RPM runs it as the sysusers account, which
+#     has no user manager. The start path survives the move unchanged:
+#     the screen session lives in the unit's cgroup and bin/pidp8i
+#     re-homes MainPID onto the sim with `systemd-notify --ready
+#     --pid=`, which is manager-agnostic. The packaged script's
+#     interactive verb pass-through is retargeted from `systemctl
+#     --user` to `systemctl`, and XDG_RUNTIME_DIR is pinned to
+#     /run/pidp8i (tmpfiles, pidp8i-owned) so start, stop, and
+#     operator attach all look for the screen session in one place.
+#     %%install still corrects the script's `install` subcommand,
+#     which bakes in the build user's home for the unit destination,
+#     to use $HOME.
 #   * rpmlint filters live in packaging/rpmlint.toml, each with its
 #     reason there.
 #
@@ -112,6 +129,10 @@ Patch0003:      0003-cc8-cross-build-with-gnu17.patch
 Patch0004:      0004-boot-script-path-for-fhs-layout.patch
 Patch0005:      0005-no-strip-on-install-for-rpm-debuginfo.patch
 Patch0006:      0006-build-banner-no-host-identity.patch
+# Downstream feature, not a build fix: the libgpiod (chardev) front
+# panel backend behind --enable-libgpiod, and pidp8i-test stopping the
+# GPIO thread before it touches the pins on exit.
+Patch0007:      0007-libgpiod-chardev-gpio-backend.patch
 
 BuildRequires:  gcc
 BuildRequires:  gcc-c++
@@ -134,11 +155,25 @@ BuildRequires:  python3
 BuildRequires:  python3-pexpect
 BuildRequires:  python3-pyyaml
 BuildRequires:  ncurses-devel
+# front panel GPIO backend: the vendored pinctrl gpiolib needs the RPi
+# firmware kernel's /dev/gpiomem, which the Fedora kernel does not
+# provide; --enable-libgpiod below selects the chardev backend instead
+# (src/pinctrl/gpiolib-gpiod.c).  pkgconfig() rather than libgpiod-devel
+# because libgpiod 2.x split into libgpiod + libgpiod_cxx subpackages.
+BuildRequires:  pkgconfig(libgpiod)
 # configure stamps the build hostname into the OS/8 boot banner
 # (catch {exec hostname}); Patch0006 lets the spec override that stamp,
 # but the probe itself wants the tool present.
 BuildRequires:  hostname
 BuildRequires:  systemd-rpm-macros
+
+# The front panel GPIO backend is libgpiod (chardev): the pinctrl
+# /dev/gpiomem interface does not exist on the Fedora kernel.  The
+# >= 2.0 pin is the object API the backend targets; same contract the
+# PiDP-10 package uses.  gpioinfo/gpioget (libgpiod-utils) is what you
+# reach for when the panel reports lines busy or missing.
+Requires:       libgpiod >= 2.0
+Recommends:     libgpiod-utils
 
 # os8-run/os8-cp/os8pkg are Python programs that drive the simulator
 # through their private modules directory (pexpect, pyyaml).
@@ -163,9 +198,9 @@ assembled from OS/8 source during the build, none are downloaded.
 Without panel hardware everything runs in sim mode (simulated lamps,
 no GPIO), so this installs usefully on a plain machine; on a PiDP-8/I
 cabinet it is the whole software stack. Binaries are in /usr/bin, the
-simulator's data in /usr/share/pidp8i, the writable OS/8 media in
-/var/lib/pidp8i/media, and the operator configuration in
-/etc/pidp8i.
+read-only simulator data in /usr/share/pidp8i, the writable OS/8
+disks, tapes, and boot scripts under /var/lib/pidp8i, and the operator
+configuration in /etc/pidp8i.
 
 %prep
 # -N: unpack only. The patches are plain `diff -u` outputs (plus
@@ -178,6 +213,7 @@ simulator's data in /usr/share/pidp8i, the writable OS/8 media in
 %patch -P 0004 -p1
 %patch -P 0005 -p1
 %patch -P 0006 -p1
+%patch -P 0007 -p1
 
 %build
 %set_build_flags
@@ -188,7 +224,7 @@ simulator's data in /usr/share/pidp8i, the writable OS/8 media in
 # final FHS home; %%install seds the generated scripts to the same
 # places.
 export PIDP8I_VERSION="%{version}-snap%{srcdate}"
-export PIDP8I_BOOTDIR="%{pkgdatadir}/boot"
+export PIDP8I_BOOTDIR="%{statedir}/boot"
 # The OS/8 boot banner otherwise stamps "built by $USER@$(hostname) at
 # $date" (Patch0006): inside a build root that is the builder's
 # identity, and nondeterministic. State both from the package instead;
@@ -200,7 +236,7 @@ export PIDP8I_BUILDTS="%{srcdatespec}"
 # package ships them on every arch (without a cabinet they say "No GPIO
 # chips found" and exit 1, which %%check accepts). A uniform tree also
 # keeps %%files arch-independent and the x86-64 chroot useful.
-./configure --prefix=%{bldpfx} --force-pidp8i
+./configure --prefix=%{bldpfx} --force-pidp8i --enable-libgpiod
 %make_build
 # rpm auto-copies the %doc entries (doc, examples) from the build tree
 # at packaging time, so the build directory configure baked into the
@@ -239,7 +275,8 @@ mv $tree/lib/*  %{buildroot}%{pkgdatadir}/lib/     # *.py and pidp8i/
 # Without this, every installed OS/8 tool dies on `from pidp8i import
 # dirs, util`.
 install -m 0644 lib/pidp8i/util.py %{buildroot}%{pkgdatadir}/lib/pidp8i/util.py
-mv $tree/share/boot    %{buildroot}%{pkgdatadir}/boot
+mv $tree/share/boot    %{buildroot}%{statedir}/boot
+chmod -R g=u %{buildroot}%{statedir}/boot
 mv $tree/share/include %{buildroot}%{pkgdatadir}/include
 mv $tree/share/media/* %{buildroot}%{statedir}/media/
 mv $tree/share/man/man1/palbart.1 %{buildroot}%{_mandir}/man1/
@@ -272,20 +309,23 @@ fi
 sed_targets=(%{buildroot}%{_bindir}/{pidp8i,os8-run,os8-cp,os8pkg,teco-pi-demo,usb-mount}
              %{buildroot}%{pkgdatadir}/lib/*.py
              %{buildroot}%{pkgdatadir}/lib/pidp8i/*.py
-             %{buildroot}%{pkgdatadir}/boot/*.script)
+             %{buildroot}%{statedir}/boot/*.script)
 sed -i \
     -e 's|\$prefix/share/media|/var/lib/pidp8i/media|g' \
     -e 's|\$prefix/bin|/usr/bin|g' \
     -e 's|\$prefix/libexec|/usr/libexec/pidp8i|g' \
     -e 's|\$prefix/etc/pidp8i\.rc|/etc/pidp8i/pidp8i.rc|g' \
-    -e 's|\$prefix/etc/pidp8i\.service|/usr/lib/systemd/user/pidp8i.service|g' \
+    -e 's|\$prefix/etc/pidp8i\.service|/usr/lib/systemd/system/pidp8i.service|g' \
+    -e 's|\$systemctl --user \$verb|$systemctl $verb|' \
+    -e 's|\$scanswitch >/dev/null 2>&1|$scanswitch >/dev/null|' \
+    -e '/^\[ -n "\$SCREEN_MANAGER" \]/a [ -n "$XDG_RUNTIME_DIR" ] || export XDG_RUNTIME_DIR=/run/pidp8i' \
     -e 's|unitdir=~[^/]*|unitdir=$HOME|' \
     -e 's|session owned by [^ .]*\.|session owned by you.|' \
     -e '\|%{_builddir}/|d' \
     -e 's|must be done as [^.]*\.|must be done by the invoking user.|' \
     -e 's|%{bldpfx}/share/media|%{statedir}/media|g' \
     -e 's|%{bldpfx}/share/save|%{statedir}/save|g' \
-    -e 's|%{bldpfx}/share/boot|%{pkgdatadir}/boot|g' \
+    -e 's|%{bldpfx}/share/boot|%{statedir}/boot|g' \
     -e 's|%{bldpfx}/share/include|%{pkgdatadir}/include|g' \
     -e 's|%{bldpfx}/share/man|%{_mandir}|g' \
     -e 's|%{bldpfx}/bin|%{_bindir}|g' \
@@ -319,18 +359,50 @@ sed -i \
     -e 's|os\.path\.join(bdir, "bin", "ptp2txt")|os.path.join("%{_bindir}", "ptp2txt")|' \
     %{buildroot}%{pkgdatadir}/lib/simh.py
 
-# Generated units: same rewrite (ExecStart, WorkingDirectory).
+# Generated units: same rewrite (ExecStart, WorkingDirectory). The
+# pidp8i unit ships as a SYSTEM unit with User=pidp8i, not upstream's
+# user unit: the RPM runs the simulator as the sysusers account, which
+# has no user manager to run a user unit under (nologin, no linger),
+# and the system-unit form is the model the pidp10 engine units use.
+# bin/pidp8i's start path is manager-agnostic for this: it spawns the
+# screen session in the unit's cgroup and re-homes MainPID onto the
+# sim with `systemd-notify --ready --pid=` (the NotifyAccess=all the
+# template already sets). XDG_RUNTIME_DIR is pinned so screen's socket
+# dir lands in a tmpfiles-created, pidp8i-owned directory instead of
+# depending on what the invoking environment happens to set. Group=
+# is deliberately absent: User= implies the account's primary group,
+# and naming it would add a requirement on a group this package
+# provides (same reasoning as pidp10). Enablement is a preset file,
+# never systemctl enable in a scriptlet.
 install -D -m 0644 etc/pidp8i.service \
-    %{buildroot}%{_userunitdir}/%{name}.service
+    %{buildroot}%{_unitdir}/%{name}.service
 install -D -m 0644 etc/usb-mount@.service \
     %{buildroot}%{_unitdir}/usb-mount@.service
 sed -i -e 's|%{bldpfx}/bin|%{_bindir}|g' \
        -e 's|%{bldpfx}/share/media|%{statedir}/media|g' \
-       %{buildroot}%{_userunitdir}/%{name}.service \
+       %{buildroot}%{_unitdir}/%{name}.service \
        %{buildroot}%{_unitdir}/usb-mount@.service
+# KillMode=none is upstream's (the stop verb drives a graceful SIMH
+# shutdown and upstream didn't want systemd reaping the screen
+# session); systemd now deprecates it on every parse. mixed keeps the
+# same flow, ExecStop still runs first, and it cleans up stragglers
+# instead of orphaning them when stop times out.
+sed -i -e '/^\[Service\]/a User=pidp8i' \
+       -e '/^\[Service\]/a Environment=XDG_RUNTIME_DIR=/run/pidp8i' \
+       -e 's|^WantedBy=default.target|WantedBy=multi-user.target|' \
+       -e 's|^KillMode=none|KillMode=mixed|' \
+       %{buildroot}%{_unitdir}/%{name}.service
+
+# Preset: the product default is a cabinet that boots running; an
+# admin gets the decision back with systemctl preset-all. (A package
+# must not run systemctl enable on someone's machine.)
+mkdir -p %{buildroot}%{_presetdir}
+printf 'enable pidp8i.service\n' > %{buildroot}%{_presetdir}/pidp8i.preset
 
 install -D -m 0644 etc/udev.rules \
     %{buildroot}%{_udevrulesdir}/68-usb-mount.rules
+install -D -m 0644 etc/99-pidp8i.rules \
+    %{buildroot}%{_udevrulesdir}/99-pidp8i.rules
 install -D -m 0440 %{SOURCE3} %{buildroot}%{_sysconfdir}/sudoers.d/%{name}
 install -D -m 0644 %{SOURCE1} %{buildroot}%{_sysusersdir}/%{name}.conf
 install -D -m 0644 %{SOURCE2} %{buildroot}%{_tmpfilesdir}/%{name}.conf
@@ -399,13 +471,13 @@ python3 -c 'import pidp8i, pidp8i.dirs, pidp8i.util, pidp8i.ips, pidp8i.os8opts,
 
 %post
 %tmpfiles_create_package %{name} %{SOURCE2}
-%systemd_post usb-mount@.service
+%systemd_post usb-mount@.service pidp8i.service
 
 %preun
-%systemd_preun usb-mount@.service
+%systemd_preun usb-mount@.service pidp8i.service
 
 %postun
-%systemd_postun_with_restart usb-mount@.service
+%systemd_postun_with_restart usb-mount@.service pidp8i.service
 
 %files
 %license COPYING.md
@@ -435,19 +507,43 @@ python3 -c 'import pidp8i, pidp8i.dirs, pidp8i.util, pidp8i.ips, pidp8i.os8opts,
 # import (sys.path was rewritten to this location).
 %dir %{pkgdatadir}
 %{pkgdatadir}/lib
-%{pkgdatadir}/boot
 %{pkgdatadir}/include
 %{_mandir}/man1/*.1*
-# The OS/8 media: package data that the running simulator and os8pkg
-# write to. It ships root:root with group-writable modes; the tmpfiles
-# Z line hands it to pidp8i:pidp8i in %%post and on every boot, so the
-# rpm metadata never references the service account (and rpm emits no
-# bare group(pidp8i) provide beside the versioned one from sysusers).
-# One directory entry owns the whole subtree; defattr's fourth field
-# sets the mode for the directories in it, the first for the files. dnf
-# reinstall restores the images; tmpfiles re-assigns them.
+# The operator-editable state tree: boot scripts, OS/8 disk images, and
+# tape images, all under /var/lib/pidp8i. The simulator and os8pkg write
+# through the RK05/TU56 images during normal use, and operators tailor
+# the boot scripts on site, so every one of these files is
+# %%config(noreplace): upgrades keep the installed copies and deposit
+# the packaged version as *.rpmnew rather than clobbering operator data.
+# The verify exclusion covers both the runtime writes (md5/size/mtime)
+# and the tmpfiles chown (user/group); dnf reinstall still restores
+# pristine images. The tmpfiles Z lines hand the trees to
+# pidp8i:pidp8i in %%post and on every boot, so the rpm metadata never
+# references the service account (and rpm emits no bare group(pidp8i)
+# provide beside the versioned one from sysusers).
+#
+# The file set is whatever install-target's mediainstall lays down
+# (Makefile.in: *.bin/*.dsk/*.rk05/*.tu56 under media/, plus the built
+# bin/*.rk05 and bin/*.tu56, plus boot/*.script): all of it has a dot
+# in its name, which is what lets the *.* globs skip the subdirectory
+# entries (subsys is the only one nested under os8; the rest are
+# listed explicitly as %%dir). Nothing in the runtime tree references
+# media/copytoUSBsticks (the .pt files there are copy-to-USB-stick
+# assets for the DF+USB workflow, and boot/readme.txt is a source-tree
+# note), so mediainstall skipping them costs nothing and they are not
+# packaged. defattr's fourth field carries the 0775 for directories.
 %defattr(0664,root,root,0775)
-%{statedir}/media
+%dir %verify(not user group) %{statedir}/boot
+%config(missingok noreplace %verify(not md5 size mtime user group)) %{statedir}/boot/*.script
+%dir %verify(not user group) %{statedir}/media
+%dir %verify(not user group) %{statedir}/media/os8
+%dir %verify(not user group) %{statedir}/media/os8/subsys
+%dir %verify(not user group) %{statedir}/media/tss8
+%dir %verify(not user group) %{statedir}/media/spacewar
+%config(missingok noreplace %verify(not md5 size mtime user group)) %{statedir}/media/os8/*.*
+%config(missingok noreplace %verify(not md5 size mtime user group)) %{statedir}/media/os8/subsys/*.*
+%config(missingok noreplace %verify(not md5 size mtime user group)) %{statedir}/media/tss8/*.*
+%config(missingok noreplace %verify(not md5 size mtime user group)) %{statedir}/media/spacewar/*.*
 %defattr(-,root,root,-)
 # State the package does not ship: tmpfiles creates these (as pidp8i)
 # and owns them on the target; the modes here are the metadata rpm
@@ -462,8 +558,10 @@ python3 -c 'import pidp8i, pidp8i.dirs, pidp8i.util, pidp8i.ips, pidp8i.os8opts,
 %config(noreplace) %{_sysconfdir}/%{name}/pidp8i.rc
 %config(noreplace) %attr(0440,root,root) %{_sysconfdir}/sudoers.d/%{name}
 %{_udevrulesdir}/68-usb-mount.rules
+%{_udevrulesdir}/99-pidp8i.rules
 %{_unitdir}/usb-mount@.service
-%{_userunitdir}/%{name}.service
+%{_unitdir}/%{name}.service
+%{_presetdir}/pidp8i.preset
 %{_sysusersdir}/%{name}.conf
 %{_tmpfilesdir}/%{name}.conf
 
@@ -486,3 +584,18 @@ python3 -c 'import pidp8i, pidp8i.dirs, pidp8i.util, pidp8i.ips, pidp8i.os8opts,
 - Only `make install-target` runs: upstream's install target does
   apt-get, setcap, enable-linger and ~/.profile edits, none of which a
   package may do.
+- libgpiod front panel backend (Patch0007, src/pinctrl/gpiolib-gpiod.c)
+  selected with --enable-libgpiod; the pinctrl gpiolib needs /dev/gpiomem, which
+  the Fedora kernel does not have. Panel group access via
+  99-pidp8i.rules, which re-tags only the panel's own gpiochip
+  (pinctrl-bcm2835/pinctrl-rp1) into the pidp8i group rather than
+  joining the distro-wide gpio group.
+- Boot scripts move with the disks and tapes: /var/lib/pidp8i/boot
+  (PIDP8I_BOOTDIR), and disks, tapes, and boot scripts are all
+  %%config(noreplace %%verify(not md5 size mtime user group)) so the
+  simulator's writes to the OS/8 images survive upgrades and rpm -V
+  stays quiet about them and the tmpfiles chown.
+- The service is a system unit (User=pidp8i, WantedBy=multi-user.target,
+  XDG_RUNTIME_DIR=/run/pidp8i) enabled by a preset file, replacing the
+  user unit that upstream's enable-linger flow assumes; the script's
+  interactive verbs and screen socket location follow the move.

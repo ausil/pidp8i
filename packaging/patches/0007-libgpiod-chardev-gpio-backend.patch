@@ -1,0 +1,622 @@
+diff --git a/Makefile.in b/Makefile.in
+index 8bf7a19..8ae3fa4 100644
+--- a/Makefile.in
++++ b/Makefile.in
+@@ -189,6 +189,13 @@ SIM_OBJS := \
+ 	obj/SIMH/sim_video.o
+ 
+ ifeq (@BUILD_PIDP8I@, 1)
++ifeq (@GPIO_BACKEND@, gpiod)
++# Character-device backend over libgpiod; no /dev/gpiomem needed, so this
++# is the one that works on distro kernels (see --enable-libgpiod).
++GPIO_OBJS := \
++	obj/pinctrl/gpiolib-gpiod.o \
++	obj/pidp8i/gpio-common.o
++else
+ GPIO_OBJS := \
+ 	obj/pinctrl/gpiochip_bcm2712.o \
+ 	obj/pinctrl/gpiolib.o \
+@@ -196,6 +203,7 @@ GPIO_OBJS := \
+ 	obj/pinctrl/gpiochip_rp1.o \
+ 	obj/pinctrl/util.o \
+ 	obj/pidp8i/gpio-common.o
++endif
+ PIDP8I_OBJS := \
+ 	obj/pidp8i/main.o
+ LED_OBJ := obj/pidp8i/gpio-@LED_DRIVER_MODULE@ls.o
+@@ -236,6 +244,10 @@ TEST_TMP_BINS = bin/os8-run bin/pdp8 bin/ptp2txt
+ 
+ LIBS = -lm -ldl -lpthread
+ 
++# Extra link flags for the binaries that pull in $(GPIO_OBJS);
++# -lgpiod with --enable-libgpiod, empty otherwise.
++GPIO_LFLAGS = @GPIO_LFLAGS@
++
+ ASM_PTS     := $(wildcard @srcdir@/src/asm/*.pal)
+ ASM_PTS     := $(subst @srcdir@/src/asm,bin,$(ASM_PTS))
+ ASM_PTS     := $(ASM_PTS:.pal=-pal.pt)
+@@ -926,7 +938,7 @@ $(BUILDDIRS):
+ 	mkdir -p $@
+ 
+ $(PIDP8I_SIM): $(SIM_OBJS) $(GPIO_OBJS)  $(PIDP8I_OBJS) $(LED_OBJ)
+-	$(CC) -o $@ $^ $(LIBS) $(SIM_LFLAGS)
++	$(CC) -o $@ $^ $(LIBS) $(SIM_LFLAGS) $(GPIO_LFLAGS)
+ 	ln -f bin/pidp8i-sim bin/pdp8
+ 	ln -f bin/pidp8i-sim bin/pidp8i-sim-nls
+ 	ln -f bin/pidp8i-sim bin/pidp8i-sim-ils
+@@ -951,13 +963,13 @@ bin/txt2ptp: bin/ptp2txt
+ # have actual PiDP8i hardware
+ ifeq (@BUILD_PIDP8I@, 1)
+ bin/pidp8i-test: $(GPIO_OBJS) obj/misc/test.o obj/pidp8i/gpio-nls.o
+-	$(CC) -o $@ $(CFLAGS) $^ $(LIBS) -lncurses
++	$(CC) -o $@ $(CFLAGS) $^ $(LIBS) -lncurses $(GPIO_LFLAGS)
+ 
+ bin/deeper: obj/misc/deeper.o $(LED_OBJ) $(GPIO_OBJS)
+-	$(CC) -o $@ $(CFLAGS) $^ $(LIBS)
++	$(CC) -o $@ $(CFLAGS) $^ $(LIBS) $(GPIO_LFLAGS)
+ 
+ libexec/scanswitch: $(GPIO_OBJS) obj/misc/scanswitch.o obj/pidp8i/gpio-nls.o
+-	$(CC) -o $@ $(CFLAGS) $^ $(LIBS)
++	$(CC) -o $@ $(CFLAGS) $^ $(LIBS) $(GPIO_LFLAGS)
+ endif
+ 
+ doc/e8-manual.pdf: doc/e8-manual.md
+diff --git a/auto.def b/auto.def
+index 47d09d0..f262bdc 100644
+--- a/auto.def
++++ b/auto.def
+@@ -103,6 +103,7 @@ append alloptions {
+     e8-screen-width:=80  => "set E8 terminal width"
+     e8-screen-height:=24 => "set E8 terminal height"
+     force-pidp8i         => "Force building the pidp8i stuff even if we're not building on a pi"
++    libgpiod             => "drive the front panel GPIOs through libgpiod (chardev) instead of the pinctrl /dev/gpiomem interface"
+     lowercase:           => "select how lowercase input is to be handled"
+     no-lamp-simulator    => "use simple LED driver instead of incandescent lamp simulator"
+     os8-focal=1          => "leave FOCAL,1969 and U/W FOCAL off the built OS/8 RK05 image"
+@@ -412,6 +413,30 @@ if {[opt-bool force-pidp8i]} {
+     define BUILD_PIDP8I 1
+ }
+ 
++# GPIO backend selection.  The vendored pinctrl gpiolib needs
++# /dev/gpiomem, which only exists with the Raspberry Pi firmware
++# kernel's out-of-tree gpiomem driver.  Distro kernels (Fedora et al)
++# ship no such device; --enable-libgpiod swaps in the character-device
++# backend (src/pinctrl/gpiolib-gpiod.c), which implements the same
++# gpiolib.h interface over libgpiod >= 2.0.
++if {[opt-bool libgpiod]} {
++    if {![cc-check-includes gpiod.h]} {
++        user-error "Could not find gpiod.h.  Try installing libgpiod-devel."
++    }
++    # Probe a 2.0-only symbol so a v1 libgpiod (the pre-2.0 line-handle
++    # API, e.g. Debian trixie) gets a clear configure error instead of a
++    # wall of implicit-declaration failures at compile time.
++    if {![cc-check-function-in-lib gpiod_chip_request_lines gpiod]} {
++        user-error "libgpiod 2.0 or newer is required (object API).  Try installing libgpiod-devel."
++    }
++    msg-result "Using libgpiod (chardev) for front panel GPIO access."
++    define GPIO_BACKEND gpiod
++    define GPIO_LFLAGS {-lgpiod}
++} else {
++    define GPIO_BACKEND pinctrl
++    define GPIO_LFLAGS {}
++}
++
+ # Ensure we have the libncurses development files installed here, else
+ # pidp8i-test won't build.
+ if {![cc-check-includes curses.h]} {
+diff --git a/doc/configure-options.md b/doc/configure-options.md
+index 06cb9d9..f09452c 100644
+--- a/doc/configure-options.md
++++ b/doc/configure-options.md
+@@ -21,6 +21,7 @@ and available disk space.
+ | [`--no-lamp-simulator`](#nls) | Disable the incandescent lamp simulator (ILS) |
+ | [`--serial-mod`](#serial-mod) | Enable Oscar's serial mod GPIO wiring |
+ | [`--alt-serial-mod`](#alt-serial-mod) | Enable James L-W's alternative serial mod |
++| [`--enable-libgpiod`](#libgpiod) | Drive the panel GPIOs via libgpiod instead of `/dev/gpiomem` |
+ | [`--throttle`](#throttle) | Limit simulator CPU speed |
+ | [`--enable-savestate`](#savestate) | Persist simulator state across restarts |
+ | [`--disable-usb-automount`](#dub) | Disable automatic USB drive mounting |
+@@ -174,6 +175,34 @@ This option is a pure alternative to [`--serial-mod`](#serial-mod): you
+ can leave both off, but you cannot pass both.
+ 
+ 
++## --enable-libgpiod <a id="libgpiod"></a>
++
++By default, the front panel drivers use the vendored [pinctrl][] library,
++which mmaps the GPIO peripheral registers through `/dev/gpiomem`.  That
++device only exists with the Raspberry Pi foundation's out-of-tree
++`gpiomem` driver, so it is present on Raspberry Pi OS but absent from
++distro kernels — Fedora among them.
++
++With `--enable-libgpiod`, the same panel logic links instead against a
++second backend (`src/pinctrl/gpiolib-gpiod.c`) that talks to the kernel
++GPIO character device through libgpiod (2.0 or newer).  Use it when
++building a package for a distro kernel, or any time you'd rather not
++depend on the out-of-tree driver.
++
++Requirements:
++
++*   `libgpiod-devel` (or the `pkgconfig(libgpiod)` equivalent) at build
++    time.
++*   The user running `pidp8i` needs read/write access to `/dev/gpiochip0`;
++    the usual mechanism is membership in the `gpio` group.
++*   No other driver may hold the pins the panel uses, in particular
++    GPIOs 14/15 on Pi 3-family boards, which are also the Bluetooth
++    UART lines: `dtoverlay=disable-bt` and a disabled serial console
++    free them up.
++
++[pinctrl]: https://github.com/raspberrypi/utils/tree/master/pinctrl
++
++
+ ## --throttle <a id="throttle"></a>
+ 
+ See [`README-throttle.md`][thro] for the values this option takes.  If
+diff --git a/src/misc/test.c b/src/misc/test.c
+index 7a251bb..983e40f 100644
+--- a/src/misc/test.c
++++ b/src/misc/test.c
+@@ -318,6 +318,12 @@ static void emergency_shut_down (int signum)
+ static void graceful_shut_down ()
+ {
+     if (!isendwin()) endwin ();
++
++    // Stop the GPIO thread before touching the pins from this one: the
++    // libgpiod backend's line requests are not safe to use from two
++    // threads at once (the mmap backend got away with it because a
++    // register write is atomic).
++    stop_pidp8i_gpio_thread ();
+     turn_off_pidp8i_leds ();
+ }
+ 
+diff --git a/src/pinctrl/gpiolib-gpiod.c b/src/pinctrl/gpiolib-gpiod.c
+new file mode 100644
+index 0000000..c39040f
+--- /dev/null
++++ b/src/pinctrl/gpiolib-gpiod.c
+@@ -0,0 +1,446 @@
++/*
++ * gpiolib-gpiod.c: libgpiod (chardev uAPI) backend for the gpiolib API
++ *
++ * Copyright © 2026 Dennis Gilmore and contributors
++ *
++ * Permission is hereby granted, free of charge, to any person obtaining a
++ * copy of this software and associated documentation files (the "Software"),
++ * to deal in the Software without restriction, including without limitation
++ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
++ * and/or sell copies of the Software, and to permit persons to whom the
++ * Software is furnished to do so, subject to the following conditions:
++ *
++ * The above copyright notice and this permission notice shall be included in
++ * all copies or substantial portions of the Software.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
++ * THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
++ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
++ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
++ *
++ * This file implements the same gpiolib.h interface as the vendored
++ * pinctrl gpiolib.c, but goes through the kernel GPIO character device
++ * via libgpiod instead of mmapping /dev/gpiomem.  Distro kernels without
++ * the Raspberry Pi firmware's gpiomem driver (Fedora, for one) have no
++ * /dev/gpiomem, so the pinctrl path cannot work there; the GPIO chardev
++ * is the only supported in-tree interface.  Configure with
++ * --enable-libgpiod to select this backend.
++ *
++ * Targets the libgpiod 2.x object API (struct gpiod_chip /
++ * gpiod_line_settings / gpiod_line_config / gpiod_line_request), which
++ * is what Fedora ships; the pre-2.0 line-handle API is gone.
++ *
++ * Semantics notes for the panel matrix code (see src/pidp8i/gpio-common.c.in):
++ *
++ *   - The lamp code writes values while the column pins are in input mode
++ *     (set_fsel INPUT, set_drive v, set_fsel OUTPUT) so the UDN2981 drivers
++ *     never see a glitched level.  That maps naturally onto chardev: while
++ *     a line's request is configured as input, set_drive only updates the
++ *     cache, and the cached value is applied as the output setting of the
++ *     reconfiguration that flips the line back to output.  Kernel-side
++ *     direction changes via gpiod_line_request_reconfigure_lines() are
++ *     single ioctls with no release window at all.
++ *
++ *   - The BCM2835 pull-up/down registers are independent of the direction
++ *     setting, so the original code's pull-up settings persist across the
++ *     repeated input/output flapping of the scan and paint loops, and pins
++ *     it never sets a pull on keep the SoC's power-on default.  We
++ *     reproduce that by requesting bias AS_IS (kernel leaves the pull
++ *     hardware alone) except when gpio_set_pull asked for a pull the
++ *     hardware doesn't already have.
++ *
++ *   - Alternate functions (FUNC0..8) are not expressible through the
++ *     chardev API, so entering one releases the line and lets the device
++ *     tree default (the I2C function, on the JLW serial-mod path) take
++ *     over again.
++ *
++ * Only the functions the PiDP-8/I GPIO modules actually call are
++ * implemented here; the rest of the pinctrl gpiolib.h surface (name
++ * lookups, pin-range queries, verbose hooks) is specific to the mmap
++ * backend and deliberately absent.
++ */
++
++#include <dirent.h>
++#include <errno.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++
++#include <gpiod.h>
++
++#include "gpiolib.h"
++
++/*
++ * No source-level version guard: the configure script rejects builds
++ * whose libgpiod lacks the 2.x object API (it probes
++ * gpiod_chip_request_lines, which first appeared in 2.0).
++ */
++
++#define GPIOD_CONSUMER "pidp8i"
++
++//// PER-PIN STATE /////////////////////////////////////////////////////
++
++struct pin_state {
++    struct gpiod_line_request* req; // our request for this line, if held
++    GPIO_FSEL_T fsel;               // last function we asked the kernel for
++    GPIO_DRIVE_T drive;             // cached output value
++    GPIO_PULL_T pull;               // bias the caller asked for
++    int pull_set;                   // caller has called gpio_set_pull
++    int hw_pull;                    // 1 + bias last written to the
++                                    // kernel; 0 = unknown/never
++    int requested;                  // req != NULL, tracked explicitly
++};
++
++// FUNC0..FUNC8 are the alternate (non-GPIO) functions; INPUT, OUTPUT,
++// GPIO and NONE are all plain GPIO use, which we hold a request for.
++static int fsel_is_alt(GPIO_FSEL_T f)
++{
++    return f < GPIO_FSEL_INPUT;
++}
++
++static struct pin_state pins[MAX_GPIO_PINS];
++static struct gpiod_chip* chip;
++static struct gpiod_request_config* reqconf;   // consumer name, built once
++
++static struct pin_state* pin(unsigned gpio)
++{
++    if (gpio >= MAX_GPIO_PINS) return NULL;
++    return &pins[gpio];
++}
++
++static void die_hint(unsigned gpio, const char* op)
++{
++    fprintf(stderr, "pidp8i: gpio %u: %s failed: %s\n", gpio, op,
++            strerror(errno));
++    if (errno == EBUSY) {
++        fprintf(stderr, "pidp8i: hint: the line is claimed by another "
++                "driver; on a Pi 3-family board GPIOs 14/15 are the "
++                "Bluetooth UART. Try dtoverlay=disable-bt and disabling "
++                "the serial console.\n");
++    }
++}
++
++//// REQUEST (RE)CONFIGURATION /////////////////////////////////////////
++
++// Build a single-line config in the pin's cached state.  Caller frees.
++static struct gpiod_line_config* pin_line_config(struct pin_state* ps,
++                                                 unsigned gpio)
++{
++    struct gpiod_line_settings* s = gpiod_line_settings_new();
++    if (!s) return NULL;
++
++    // Bias: the BCM pull registers are independent of direction, and the
++    // mmap backend only ever writes them from gpio_set_pull.  Mirror
++    // that: leave the bias AS_IS (the kernel then doesn't touch the pull
++    // hardware at all) unless the caller asked for a pull that the
++    // hardware doesn't already have.  This keeps the BCM power-on
++    // pull-downs on the lamp row pins, which the panel never configures,
++    // and avoids a slow GPPUD sequence on every direction flip.
++    if (ps->fsel == GPIO_FSEL_OUTPUT) {
++        gpiod_line_settings_set_direction(s, GPIOD_LINE_DIRECTION_OUTPUT);
++        gpiod_line_settings_set_output_value(s,
++                ps->drive == DRIVE_HIGH ? GPIOD_LINE_VALUE_ACTIVE
++                                        : GPIOD_LINE_VALUE_INACTIVE);
++    }
++    else {   // INPUT, and GPIO_FSEL_GPIO/NONE (plain GPIO, stay tri-stated)
++        gpiod_line_settings_set_direction(s, GPIOD_LINE_DIRECTION_INPUT);
++    }
++    if (ps->pull_set && ps->hw_pull != (int) ps->pull + 1) {
++        switch (ps->pull) {
++            case PULL_UP:   gpiod_line_settings_set_bias(s, GPIOD_LINE_BIAS_PULL_UP);   break;
++            case PULL_DOWN: gpiod_line_settings_set_bias(s, GPIOD_LINE_BIAS_PULL_DOWN); break;
++            default:        gpiod_line_settings_set_bias(s, GPIOD_LINE_BIAS_DISABLED);  break;
++        }
++    }
++
++    struct gpiod_line_config* lc = gpiod_line_config_new();
++    if (!lc) { gpiod_line_settings_free(s); return NULL; }
++
++    unsigned offset = gpio;
++    int rc = gpiod_line_config_add_line_settings(lc, &offset, 1, s);
++    gpiod_line_settings_free(s);
++    if (rc != 0) { gpiod_line_config_free(lc); return NULL; }
++
++    return lc;
++}
++
++// Move the pin's kernel-side state to match its cached state.
++static int pin_apply(unsigned gpio, struct pin_state* ps)
++{
++    if (fsel_is_alt(ps->fsel)) {
++        // An alternate function: give the line back to the device tree.
++        if (ps->requested) {
++            gpiod_line_request_release(ps->req);
++            ps->req = NULL;
++            ps->requested = 0;
++        }
++        ps->hw_pull = 0;    // the alt function may have its own pull
++        return 0;
++    }
++
++    struct gpiod_line_config* lc = pin_line_config(ps, gpio);
++    if (!lc) {
++        die_hint(gpio, "line config");
++        return -1;
++    }
++
++    int ret;
++    if (ps->requested) {
++        // Single ioctl, no window where the line is unclaimed or floating.
++        ret = gpiod_line_request_reconfigure_lines(ps->req, lc);
++        if (ret != 0) die_hint(gpio, "reconfigure");
++    }
++    else {
++        ps->req = gpiod_chip_request_lines(chip, reqconf, lc);
++        if (!ps->req) {
++            die_hint(gpio, "request lines");
++            ret = -1;
++        }
++        else {
++            ps->requested = 1;
++            ret = 0;
++        }
++    }
++
++    gpiod_line_config_free(lc);
++    if (ret == 0 && ps->pull_set) ps->hw_pull = (int) ps->pull + 1;
++    return ret;
++}
++
++static void pin_set_fsel(unsigned gpio, GPIO_FSEL_T fsel)
++{
++    struct pin_state* ps = pin(gpio);
++    if (!ps) return;
++
++    ps->fsel = fsel;
++    pin_apply(gpio, ps);
++}
++
++//// GPIOLIB.H API /////////////////////////////////////////////////////
++
++static int is_gpiochip_entry(const struct dirent* de)
++{
++    return strncmp(de->d_name, "gpiochip", 8) == 0;
++}
++
++// Find the chip whose name or label is one of want_names, earlier
++// names winning.  libgpiod 2.x has no open-by-label, so we scan every
++// /dev/gpiochip* ourselves: there is no fixed upper bound on N (a Pi 5
++// has several brcmstb chips ahead of RP1, and laptops have a dozen
++// PMIC blocks).
++//
++// There is deliberately no "first chip that opens" fallback: the line
++// offsets we drive are BCM GPIO numbers, which only mean anything on
++// the SoC header controller.  Any other chip is a PMIC, expander or
++// similar, and toggling its lines is at best useless and at worst
++// harmful.  On a miss errno is the first open failure seen (EACCES
++// tells the caller to look at permissions), else ENODEV.
++static struct gpiod_chip* open_chip(const char* const* want_names)
++{
++    struct dirent** ents = NULL;
++    int nents = scandir("/dev", &ents, is_gpiochip_entry, alphasort);
++    if (nents < 0) return NULL;
++
++    struct gpiod_chip* found = NULL;
++    int found_rank = -1;
++    int real_err = 0;
++    char path[300];
++
++    for (int i = 0; i < nents; ++i) {
++        snprintf(path, sizeof path, "/dev/%s", ents[i]->d_name);
++        if (!gpiod_is_gpiochip_device(path)) continue;
++
++        struct gpiod_chip* c = gpiod_chip_open(path);
++        if (!c) {
++            if (!real_err && errno != ENOENT) real_err = errno;
++            continue;
++        }
++
++        int rank = -1;
++        struct gpiod_chip_info* info = gpiod_chip_get_info(c);
++        if (info) {
++            const char* nm = gpiod_chip_info_get_name(info);
++            const char* lb = gpiod_chip_info_get_label(info);
++            for (int r = 0; want_names[r]; ++r) {
++                if ((nm && strcmp(nm, want_names[r]) == 0) ||
++                    (lb && strcmp(lb, want_names[r]) == 0)) {
++                    rank = r;
++                    break;
++                }
++            }
++            gpiod_chip_info_free(info);
++        }
++
++        if (rank >= 0 && (found_rank < 0 || rank < found_rank)) {
++            if (found) gpiod_chip_close(found);
++            found = c;
++            found_rank = rank;
++        }
++        else {
++            gpiod_chip_close(c);
++        }
++    }
++
++    for (int i = 0; i < nents; ++i) free(ents[i]);
++    free(ents);
++
++    if (!found) errno = real_err ? real_err : ENODEV;
++    return found;
++}
++
++int gpiolib_init(void)
++{
++    // GPIO chip labels of the 40-pin header controller, as registered by
++    // the mainline drivers (and the Raspberry Pi kernel, which uses the
++    // same labels): Pi 0-3, Pi 4/400/CM4 (same driver, different label),
++    // Pi 5/CM5 (RP1, behind PCIe).
++    static const char* const names[] = {
++        "pinctrl-bcm2835", "pinctrl-bcm2711", "pinctrl-rp1", NULL };
++
++    chip = open_chip(names);
++    if (!chip) {
++        fprintf(stderr, "pidp8i: cannot open the Raspberry Pi header GPIO "
++                "chip (pinctrl-bcm2835/-bcm2711/-rp1): %s\n",
++                strerror(errno));
++        if (errno == ENODEV) {
++            fprintf(stderr, "pidp8i: hint: no GPIO chip with one of those "
++                    "labels is visible; compare gpiodetect(1). On a Pi 5 "
++                    "the RP1 drivers are modules (rp1_pci, pinctrl-rp1).\n");
++        }
++        if (errno == EACCES) {
++            fprintf(stderr, "pidp8i: hint: check group membership "
++                    "(ls -l /dev/gpiochip*; id) and SELinux (ls -Z, "
++                    "ausearch -m avc -ts recent).\n");
++        }
++        return -EIO;
++    }
++
++    reqconf = gpiod_request_config_new();
++    if (reqconf) gpiod_request_config_set_consumer(reqconf, GPIOD_CONSUMER);
++
++    struct gpiod_chip_info* info = gpiod_chip_get_info(chip);
++    int num = 0;
++    if (info) {
++        num = (int) gpiod_chip_info_get_num_lines(info);
++        gpiod_chip_info_free(info);
++    }
++    if (num <= 0) {
++        fprintf(stderr, "pidp8i: GPIO chip reports no lines\n");
++        return -ENODEV;
++    }
++    return num;
++}
++
++int gpiolib_init_by_name(const char* name)
++{
++    chip = gpiod_chip_open(name);       // a /dev/gpiochipN path, or...
++    if (!chip) {
++        const char* const names[] = { name, NULL };
++        chip = open_chip(names);        // ...a chip name/label
++    }
++    if (!chip) {
++        fprintf(stderr, "pidp8i: cannot open GPIO chip '%s': %s\n",
++                name, strerror(errno));
++        return -EIO;
++    }
++
++    reqconf = gpiod_request_config_new();
++    if (reqconf) gpiod_request_config_set_consumer(reqconf, GPIOD_CONSUMER);
++
++    struct gpiod_chip_info* info = gpiod_chip_get_info(chip);
++    int num = info ? (int) gpiod_chip_info_get_num_lines(info) : 0;
++    if (info) gpiod_chip_info_free(info);
++    return num > 0 ? num : -ENODEV;
++}
++
++// The chardev backend has no peripheral mapping step; succeed silently.
++int gpiolib_mmap(void)
++{
++    return chip ? 0 : -EIO;
++}
++
++int gpio_num_is_valid(unsigned gpio)
++{
++    if (!chip) return 0;
++    struct gpiod_chip_info* info = gpiod_chip_get_info(chip);
++    if (!info) return 0;
++    int ok = gpio < gpiod_chip_info_get_num_lines(info);
++    gpiod_chip_info_free(info);
++    return ok;
++}
++
++void gpio_set_dir(unsigned gpio, GPIO_DIR_T dir)
++{
++    pin_set_fsel(gpio, dir == DIR_OUTPUT ? GPIO_FSEL_OUTPUT
++                                         : GPIO_FSEL_INPUT);
++}
++
++void gpio_set_fsel(unsigned gpio, const GPIO_FSEL_T func)
++{
++    pin_set_fsel(gpio, func);
++}
++
++void gpio_set_drive(unsigned gpio, GPIO_DRIVE_T drv)
++{
++    struct pin_state* ps = pin(gpio);
++    if (!ps) return;
++
++    ps->drive = drv;
++
++    // Only touch hardware if the line currently drives the pin; while
++    // blanked to input this just updates the value the next output
++    // reconfiguration will apply.
++    if (ps->requested && ps->fsel == GPIO_FSEL_OUTPUT) {
++        // The second argument is the chip line offset even though the
++        // request holds one line: libgpiod keys requested lines by
++        // their chip-side offset (passing an index yields EINVAL for
++        // every pin but gpio 0 - learned the hard way on real
++        // hardware).
++        if (gpiod_line_request_set_value(ps->req, gpio,
++                                         drv == DRIVE_HIGH) != 0) {
++            die_hint(gpio, "set value");
++        }
++    }
++}
++
++void gpio_set(unsigned gpio)   { gpio_set_drive(gpio, DRIVE_HIGH); }
++void gpio_clear(unsigned gpio) { gpio_set_drive(gpio, DRIVE_LOW);  }
++
++void gpio_set_pull(unsigned gpio, GPIO_PULL_T pull)
++{
++    struct pin_state* ps = pin(gpio);
++    if (!ps) return;
++
++    ps->pull = pull;
++    ps->pull_set = 1;
++
++    // Apply immediately whenever we hold the line, matching the mmap
++    // backend, where the pull registers take effect regardless of the
++    // direction.  Otherwise the next request picks it up.
++    if (ps->requested) pin_apply(gpio, ps);
++}
++
++int gpio_get_level(unsigned gpio)
++{
++    struct pin_state* ps = pin(gpio);
++    if (!ps) return 0;
++
++    // The scan loop sets input mode before reading, but don't depend on
++    // it: sampling the pin requires an input-side request, so force that
++    // state if we're not already in it.
++    if (!ps->requested || ps->fsel == GPIO_FSEL_OUTPUT) {
++        ps->fsel = GPIO_FSEL_INPUT;
++        if (pin_apply(gpio, ps) != 0) return 0;
++    }
++    if (!ps->requested) return 0;
++
++    // Chip line offset, not a within-request index - see gpio_set_drive.
++    int value = gpiod_line_request_get_value(ps->req, gpio);
++    if (value < 0) {
++        die_hint(gpio, "get value");
++        return 0;
++    }
++    return value ? 1 : 0;
++}

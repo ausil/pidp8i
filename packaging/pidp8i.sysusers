@@ -4,3 +4,11 @@
 # account. Created by %sysusers_create_package in %pre.
 u pidp8i - "PiDP-8/I simulator" /var/lib/pidp8i /sbin/nologin
 g pidp8i -
+# Deliberately no membership in the distribution's "gpio" group (same
+# reasoning as the PiDP-10 packaging): "gpio" is every gpiochip on the
+# machine, and the simulator only ever needs the SoC GPIO controller the
+# panel is wired to.  etc/99-pidp8i.rules re-tags just that
+# one chip into this account's own group instead.  (The pinctrl backend
+# used /dev/gpiomem, group gpio as well, but that device doesn't exist
+# on the Fedora kernel at all; the chardev backend needs no group here
+# beyond the rules file picking the right one.)

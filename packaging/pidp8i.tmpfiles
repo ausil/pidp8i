@@ -12,13 +12,24 @@
 # /var/lib/pidp8i/save     savestate files (the boot scripts' savestate
 #                          script was rewritten to write here).
 # /var/lib/pidp8i/obj      os8pkg's staging directory (dirs.py obj/).
+# /var/lib/pidp8i/boot     boot scripts (package files, %config
+#                          noreplace; Z hands them to pidp8i so
+#                          operators in the group can tailor them).
 d /var/lib/pidp8i 0755 root root -
 d /var/lib/pidp8i/run 0755 pidp8i pidp8i -
 d /var/lib/pidp8i/save 0775 pidp8i pidp8i -
 d /var/lib/pidp8i/obj 0775 pidp8i pidp8i -
-# The media images ship as root:root package files (so rpm metadata
-# carries no reference to the service account); Z recursively assigns
-# them to pidp8i:pidp8i after install (and re-assigns on every boot),
-# while the modes from the package (0664 files / 0775 dirs) stay put.
-# Operators in the pidp8i group write through the group bit.
+# screen's socket directory for the system-unit service: the unit
+# pins XDG_RUNTIME_DIR here so start and stop agree on where the
+# pidp8i session lives regardless of the invoking environment.
+d /run/pidp8i 0700 pidp8i pidp8i -
+# The media images and boot scripts ship as root:root package files
+# (so rpm metadata carries no reference to the service account); Z
+# recursively assigns them to pidp8i:pidp8i after install (and
+# re-assigns on every boot), while the modes from the package (0664
+# files / 0775 dirs) stay put. Operators in the pidp8i group write
+# through the group bit. Both trees are %%config(noreplace) in the
+# package: rpm -V must not flag the tmpfiles chown (user/group) or the
+# simulator's writes to the images (md5/size/mtime).
 Z /var/lib/pidp8i/media - pidp8i pidp8i -
+Z /var/lib/pidp8i/boot - pidp8i pidp8i -
